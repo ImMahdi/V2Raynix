@@ -7,7 +7,7 @@ import RoutingPage from './pages/RoutingPage';
 import LogsPage from './pages/LogsPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
-import { api, setToken } from './services/api';
+import { api, setToken, getToken, onUnauthorized } from './services/api';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -20,10 +20,23 @@ export default function App() {
 
   // Check initial login session
   useEffect(() => {
+    onUnauthorized(() => {
+      setUser(null);
+    });
+
+    const token = getToken();
+    if (!token) {
+      setUser(null);
+      setCheckingAuth(false);
+      return;
+    }
+
     api.getMe()
       .then(res => {
         if (res.authenticated) {
           setUser({ username: res.username });
+        } else {
+          setUser(null);
         }
       })
       .catch(() => {
