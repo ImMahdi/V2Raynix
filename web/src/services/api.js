@@ -1,7 +1,13 @@
 const API_BASE = '/api';
 
-function getToken() {
+export function getToken() {
   return localStorage.getItem('v2raynix_token');
+}
+
+let onUnauthorizedCallback = null;
+
+export function onUnauthorized(callback) {
+  onUnauthorizedCallback = callback;
 }
 
 export function setToken(token) {
@@ -32,7 +38,9 @@ async function request(endpoint, options = {}) {
 
   if (response.status === 401 && endpoint !== '/auth/login') {
     setToken(null);
-    window.location.reload();
+    if (onUnauthorizedCallback) {
+      onUnauthorizedCallback();
+    }
     throw new Error('Session expired, please log in again.');
   }
 
