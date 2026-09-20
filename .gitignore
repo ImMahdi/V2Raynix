@@ -1,0 +1,31 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Node / Frontend
+web/node_modules/
+web/dist/
+.npm
+*.log
+
+# Databases & local runtime data
+*.db
+*.sqlite
+/data/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Superpowers execution scratch
+.superpowers/
+
+# Graphify build caches
+graphify-out/.graphify_*
+graphify-out/obsidian/
