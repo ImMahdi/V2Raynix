@@ -1,15 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Radio, Copy, Trash2, Activity, Check, CheckCircle } from 'lucide-react';
 
 export default function ConfigCard({ config, isActive, onActivate, onDelete, onPing }) {
   const [copied, setCopied] = useState(false);
   const [pinging, setPinging] = useState(false);
+  const copyTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const copyToClipboard = (e) => {
     e.stopPropagation();
     navigator.clipboard.writeText(config.rawUrl);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
+    copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
   const handlePing = async (e) => {

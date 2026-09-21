@@ -10,10 +10,10 @@ export default function ConfigsPage({ configs, activeId, onActivate, onDelete, o
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
 
-  const filteredConfigs = configs.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.server.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.protocol.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredConfigs = (configs || []).filter(c => 
+    (c?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c?.server || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c?.protocol || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleImportSubmit = async (e) => {

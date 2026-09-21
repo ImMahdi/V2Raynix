@@ -1,20 +1,35 @@
 const API_BASE = '/api';
 
 export function getToken() {
-  return localStorage.getItem('v2raynix_token');
+  try {
+    return sessionStorage.getItem('v2raynix_token') || localStorage.getItem('v2raynix_token');
+  } catch (e) {
+    return null;
+  }
 }
 
 let onUnauthorizedCallback = null;
 
 export function onUnauthorized(callback) {
   onUnauthorizedCallback = callback;
+  return () => {
+    if (onUnauthorizedCallback === callback) {
+      onUnauthorizedCallback = null;
+    }
+  };
 }
 
 export function setToken(token) {
-  if (token) {
-    localStorage.setItem('v2raynix_token', token);
-  } else {
-    localStorage.removeItem('v2raynix_token');
+  try {
+    if (token) {
+      sessionStorage.setItem('v2raynix_token', token);
+      localStorage.setItem('v2raynix_token', token);
+    } else {
+      sessionStorage.removeItem('v2raynix_token');
+      localStorage.removeItem('v2raynix_token');
+    }
+  } catch (e) {
+    console.warn('Storage operation failed:', e);
   }
 }
 
@@ -78,5 +93,6 @@ export const api = {
   deleteRoutingRule: (id) => request(`/routing/rules/${id}`, { method: 'DELETE' }),
 
   // Logs
-  getLogs: () => request('/system/logs'),
+  getLogs: (options = {}) => request('/system/logs', options),
 };
+

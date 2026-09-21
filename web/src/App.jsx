@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import SafeModeModal from './components/SafeModeModal';
+import ErrorBoundary from './components/ErrorBoundary';
 import DashboardPage from './pages/DashboardPage';
 import ConfigsPage from './pages/ConfigsPage';
 import RoutingPage from './pages/RoutingPage';
@@ -17,6 +18,7 @@ export default function App() {
   const [status, setStatus] = useState(null);
   const [configs, setConfigs] = useState([]);
   const [routingRules, setRoutingRules] = useState([]);
+  const [toggling, setToggling] = useState(false);
 
   // Check initial login session
   useEffect(() => {
@@ -47,28 +49,45 @@ export default function App() {
       });
   }, []);
 
-  // Poll tunnel status and fetch data when authenticated
+  // Poll tunnel status and fetch data with exponential backoff & jitter (WEB-01)
   useEffect(() => {
     if (!user) return;
 
-    const refreshData = async () => {
+    let timerId = null;
+    let isCancelled = false;
+    let failureCount = 0;
+
+    const poll = async () => {
       try {
         const [stat, cfgs, rls] = await Promise.all([
           api.getTunnelStatus(),
           api.getConfigs(),
           api.getRoutingRules(),
         ]);
+        if (isCancelled) return;
         setStatus(stat);
         setConfigs(cfgs || []);
         setRoutingRules(rls || []);
+        failureCount = 0;
       } catch (err) {
-        console.error('Error refreshing state:', err);
+        if (isCancelled) return;
+        failureCount++;
+      } finally {
+        if (!isCancelled) {
+          // Standard delay 2000ms; exponential backoff up to 30s + 0-500ms jitter on failure
+          const delay = failureCount === 0
+            ? 2000
+            : Math.min(2000 * Math.pow(1.5, failureCount), 30000) + Math.random() * 500;
+          timerId = setTimeout(poll, delay);
+        }
       }
     };
 
-    refreshData();
-    const interval = setInterval(refreshData, 2000);
-    return () => clearInterval(interval);
+    poll();
+    return () => {
+      isCancelled = true;
+      if (timerId) clearTimeout(timerId);
+    };
   }, [user]);
 
   const handleLogout = () => {
@@ -76,8 +95,10 @@ export default function App() {
     setUser(null);
   };
 
-  // Tunnel control
+  // Tunnel control with immediate toggling lock (WEB-04)
   const handleToggleTunnel = async () => {
+    if (toggling) return;
+    setToggling(true);
     try {
       if (status?.state === 'connected') {
         const newStat = await api.disconnectTunnel();
@@ -88,6 +109,8 @@ export default function App() {
       }
     } catch (err) {
       alert(err.message || 'Tunnel operation failed');
+    } finally {
+      setToggling(false);
     }
   };
 
@@ -203,38 +226,41 @@ export default function App() {
       />
 
       <main className="main-content">
-        {activeTab === 'dashboard' && (
-          <DashboardPage 
-            status={status}
-            configs={configs}
-            onToggleTunnel={handleToggleTunnel}
-            onSelectTab={setActiveTab}
-          />
-        )}
+        <ErrorBoundary>
+          {activeTab === 'dashboard' && (
+            <DashboardPage 
+              status={status}
+              configs={configs}
+              onToggleTunnel={handleToggleTunnel}
+              onSelectTab={setActiveTab}
+              toggling={toggling}
+            />
+          )}
 
-        {activeTab === 'configs' && (
-          <ConfigsPage 
-            configs={configs}
-            activeId={status?.activeConfigId}
-            onActivate={handleActivateConfig}
-            onDelete={handleDeleteConfig}
-            onPing={handlePingConfig}
-            onPingAll={handlePingAll}
-            onImport={handleImportConfig}
-          />
-        )}
+          {activeTab === 'configs' && (
+            <ConfigsPage 
+              configs={configs}
+              activeId={status?.activeConfigId}
+              onActivate={handleActivateConfig}
+              onDelete={handleDeleteConfig}
+              onPing={handlePingConfig}
+              onPingAll={handlePingAll}
+              onImport={handleImportConfig}
+            />
+          )}
 
-        {activeTab === 'routing' && (
-          <RoutingPage 
-            rules={routingRules}
-            onCreateRule={handleCreateRule}
-            onDeleteRule={handleDeleteRule}
-          />
-        )}
+          {activeTab === 'routing' && (
+            <RoutingPage 
+              rules={routingRules}
+              onCreateRule={handleCreateRule}
+              onDeleteRule={handleDeleteRule}
+            />
+          )}
 
-        {activeTab === 'logs' && <LogsPage />}
+          {activeTab === 'logs' && <LogsPage />}
 
-        {activeTab === 'settings' && <SettingsPage />}
+          {activeTab === 'settings' && <SettingsPage />}
+        </ErrorBoundary>
       </main>
 
       {/* Safe Mode Auto-Rollback Modal */}

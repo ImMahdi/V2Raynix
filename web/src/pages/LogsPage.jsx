@@ -1,27 +1,70 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { RefreshCw, Terminal } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function LogsPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const isMountedRef = useRef(true);
+  const controllerRef = useRef(null);
+  const timerRef = useRef(null);
 
   const fetchLogs = async () => {
+    // Abort previous in-flight request if any
+    if (controllerRef.current) {
+      controllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    controllerRef.current = controller;
+
     setLoading(true);
     try {
-      const data = await api.getLogs();
-      setLogs(data || []);
+      const data = await api.getLogs({ signal: controller.signal });
+      if (isMountedRef.current) {
+        setLogs(data || []);
+      }
+      return true;
     } catch (err) {
-      console.error(err);
+      if (err.name !== 'AbortError' && isMountedRef.current) {
+        console.warn('Logs fetch failed:', err?.message || err);
+      }
+      return false;
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 3000);
-    return () => clearInterval(interval);
+    isMountedRef.current = true;
+    let failureCount = 0;
+
+    const pollLogs = async () => {
+      const success = await fetchLogs();
+      if (!isMountedRef.current) return;
+
+      if (success) {
+        failureCount = 0;
+      } else {
+        failureCount++;
+      }
+
+      // Normal delay 3s; backoff up to 30s with jitter on consecutive errors (WEB-01)
+      const delay = failureCount === 0
+        ? 3000
+        : Math.min(3000 * Math.pow(1.5, failureCount), 30000) + Math.random() * 500;
+
+      timerRef.current = setTimeout(pollLogs, delay);
+    };
+
+    pollLogs();
+
+    return () => {
+      isMountedRef.current = false;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (controllerRef.current) controllerRef.current.abort();
+    };
   }, []);
 
   const getLevelColor = (lvl) => {
@@ -31,6 +74,9 @@ export default function LogsPage() {
       default: return '#38bdf8';
     }
   };
+
+  // Bound rendered items to 200 to avoid unbounded DOM growth (WEB-06)
+  const displayedLogs = (logs || []).slice(-200);
 
   return (
     <div>
@@ -42,7 +88,7 @@ export default function LogsPage() {
           </p>
         </div>
 
-        <button className="btn btn-secondary" onClick={fetchLogs} disabled={loading}>
+        <button className="btn btn-secondary" onClick={() => fetchLogs()} disabled={loading}>
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           Refresh
         </button>
@@ -60,13 +106,13 @@ export default function LogsPage() {
         overflowY: 'auto',
         lineHeight: 1.6,
       }}>
-        {logs.length === 0 ? (
+        {displayedLogs.length === 0 ? (
           <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '4rem 0' }}>
             No logs captured yet. System running smoothly.
           </div>
         ) : (
-          logs.map((log, idx) => (
-            <div key={idx} style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.25rem' }}>
+          displayedLogs.map((log, idx) => (
+            <div key={`${log.timestamp || ''}-${idx}`} style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.25rem' }}>
               <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
                 {log.timestamp?.substring(11, 19) || '00:00:00'}
               </span>
