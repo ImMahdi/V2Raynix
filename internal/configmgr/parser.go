@@ -96,6 +96,9 @@ func parseVLESS(link string) (*store.ConfigItem, error) {
 
 func parseVMess(link string) (*store.ConfigItem, error) {
 	b64Data := strings.TrimPrefix(link, "vmess://")
+	if idx := strings.IndexAny(b64Data, "#?"); idx != -1 {
+		b64Data = b64Data[:idx]
+	}
 	decoded, err := decodeBase64(b64Data)
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid base64 in vmess", ErrMalformedLink)
@@ -192,7 +195,11 @@ func parseShadowsocks(link string) (*store.ConfigItem, error) {
 			return nil, ErrMalformedLink
 		}
 		server = hp[0]
-		port, _ = strconv.Atoi(hp[1])
+		portStr := hp[1]
+		if idx := strings.IndexAny(portStr, "?#"); idx != -1 {
+			portStr = portStr[:idx]
+		}
+		port, _ = strconv.Atoi(portStr)
 	} else {
 		decoded, err := decodeBase64(mainPart)
 		if err != nil {
@@ -206,7 +213,11 @@ func parseShadowsocks(link string) (*store.ConfigItem, error) {
 				return nil, ErrMalformedLink
 			}
 			server = hp[0]
-			port, _ = strconv.Atoi(hp[1])
+			portStr := hp[1]
+			if idx := strings.IndexAny(portStr, "?#"); idx != -1 {
+				portStr = portStr[:idx]
+			}
+			port, _ = strconv.Atoi(portStr)
 		}
 	}
 
@@ -252,20 +263,27 @@ func parseRawJSON(content string) (*store.ConfigItem, error) {
 }
 
 func decodeBase64(s string) ([]byte, error) {
+	clean := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
+			return -1
+		}
+		return r
+	}, s)
+
 	// Standard with padding
-	if b, err := base64.StdEncoding.DecodeString(s); err == nil {
+	if b, err := base64.StdEncoding.DecodeString(clean); err == nil {
 		return b, nil
 	}
 	// Raw standard without padding
-	if b, err := base64.RawStdEncoding.DecodeString(s); err == nil {
+	if b, err := base64.RawStdEncoding.DecodeString(clean); err == nil {
 		return b, nil
 	}
 	// URL-safe with padding
-	if b, err := base64.URLEncoding.DecodeString(s); err == nil {
+	if b, err := base64.URLEncoding.DecodeString(clean); err == nil {
 		return b, nil
 	}
 	// Raw URL-safe without padding
-	return base64.RawURLEncoding.DecodeString(s)
+	return base64.RawURLEncoding.DecodeString(clean)
 }
 
 func generateID() string {
