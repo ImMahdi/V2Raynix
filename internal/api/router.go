@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/v2raynix/v2raynix/internal/auth"
@@ -13,6 +15,11 @@ import (
 	"github.com/v2raynix/v2raynix/internal/core"
 	"github.com/v2raynix/v2raynix/internal/pinger"
 	"github.com/v2raynix/v2raynix/internal/store"
+)
+
+const (
+	defaultMaxBodyBytes = 2 << 20  // 2 MB for auth, rules, password
+	configMaxBodyBytes  = 10 << 20 // 10 MB for configuration imports
 )
 
 type Dependencies struct {
@@ -23,14 +30,16 @@ type Dependencies struct {
 }
 
 type Router struct {
-	deps *Dependencies
-	mux  *http.ServeMux
+	deps         *Dependencies
+	mux          *http.ServeMux
+	loginLimiter *loginRateLimiter
 }
 
 func NewRouter(deps *Dependencies) http.Handler {
 	r := &Router{
-		deps: deps,
-		mux:  http.NewServeMux(),
+		deps:         deps,
+		mux:          http.NewServeMux(),
+		loginLimiter: newLoginRateLimiter(5, time.Minute),
 	}
 	r.registerRoutes()
 	return r
@@ -116,12 +125,17 @@ func (r *Router) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 // Handler implementations
 
 func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
+	clientIP := getClientIP(req)
+	if r.loginLimiter.isBlocked(clientIP) {
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many failed login attempts, please try again later"})
+		return
+	}
+
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := decodeJSON(w, req, defaultMaxBodyBytes, &body, "invalid request body"); err != nil {
 		return
 	}
 
@@ -149,9 +163,12 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if body.Username != admin.Username || !auth.CheckPassword(admin.PasswordHash, body.Password) {
+		r.loginLimiter.recordFailure(clientIP)
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
+
+	r.loginLimiter.reset(clientIP)
 
 	token, err := auth.GenerateJWT(admin.Username, r.deps.JWTSecret, 24*time.Hour)
 	if err != nil {
@@ -184,8 +201,7 @@ func (r *Router) handlePassword(w http.ResponseWriter, req *http.Request) {
 		CurrentPassword string `json:"currentPassword"`
 		NewPassword     string `json:"newPassword"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := decodeJSON(w, req, defaultMaxBodyBytes, &body, "invalid request body"); err != nil {
 		return
 	}
 
@@ -229,8 +245,7 @@ func (r *Router) handleCreateConfig(w http.ResponseWriter, req *http.Request) {
 		Content string `json:"content"`
 		Name    string `json:"name"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	if err := decodeJSON(w, req, configMaxBodyBytes, &body, "invalid request body"); err != nil {
 		return
 	}
 
@@ -377,8 +392,7 @@ func (r *Router) handleGetRoutingRules(w http.ResponseWriter, req *http.Request)
 
 func (r *Router) handleCreateRoutingRule(w http.ResponseWriter, req *http.Request) {
 	var rule store.RoutingRule
-	if err := json.NewDecoder(req.Body).Decode(&rule); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid rule format"})
+	if err := decodeJSON(w, req, defaultMaxBodyBytes, &rule, "invalid rule format"); err != nil {
 		return
 	}
 
@@ -413,4 +427,99 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func decodeJSON(w http.ResponseWriter, req *http.Request, maxBytes int64, dst interface{}, fallbackErrMsg string) error {
+	req.Body = http.MaxBytesReader(w, req.Body, maxBytes)
+	if err := json.NewDecoder(req.Body).Decode(dst); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+			return err
+		}
+		if fallbackErrMsg == "" {
+			fallbackErrMsg = "invalid request body"
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fallbackErrMsg})
+		return err
+	}
+	return nil
+}
+
+func getClientIP(req *http.Request) string {
+	if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	if xrip := req.Header.Get("X-Real-IP"); xrip != "" {
+		return strings.TrimSpace(xrip)
+	}
+	host, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return req.RemoteAddr
+}
+
+type loginRateLimiter struct {
+	mu          sync.Mutex
+	attempts    map[string][]time.Time
+	maxAttempts int
+	window      time.Duration
+}
+
+func newLoginRateLimiter(maxAttempts int, window time.Duration) *loginRateLimiter {
+	return &loginRateLimiter{
+		attempts:    make(map[string][]time.Time),
+		maxAttempts: maxAttempts,
+		window:      window,
+	}
+}
+
+func (rl *loginRateLimiter) isBlocked(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-rl.window)
+
+	timestamps := rl.attempts[ip]
+	valid := timestamps[:0]
+	for _, t := range timestamps {
+		if t.After(cutoff) {
+			valid = append(valid, t)
+		}
+	}
+
+	if len(valid) == 0 {
+		delete(rl.attempts, ip)
+		return false
+	}
+	rl.attempts[ip] = valid
+
+	return len(valid) >= rl.maxAttempts
+}
+
+func (rl *loginRateLimiter) recordFailure(ip string) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-rl.window)
+
+	timestamps := rl.attempts[ip]
+	valid := timestamps[:0]
+	for _, t := range timestamps {
+		if t.After(cutoff) {
+			valid = append(valid, t)
+		}
+	}
+	valid = append(valid, now)
+	rl.attempts[ip] = valid
+}
+
+func (rl *loginRateLimiter) reset(ip string) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	delete(rl.attempts, ip)
 }
