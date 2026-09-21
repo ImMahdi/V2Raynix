@@ -1,7 +1,10 @@
 package pinger_test
 
 import (
+	"context"
 	"net"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,5 +70,88 @@ func TestPinger_BatchPing(t *testing.T) {
 	}
 	if results["c2"] != -1 {
 		t.Errorf("expected -1 for unreachable c2, got %d", results["c2"])
+	}
+}
+
+func TestPinger_IPv6Support(t *testing.T) {
+	// Pinging an IPv6 literal (::1) on an unused port should NOT fail with "too many colons in address"
+	_, err := pinger.TCPPing("::1", 59997, 50*time.Millisecond)
+	if err != nil && strings.Contains(err.Error(), "too many colons in address") {
+		t.Fatalf("IPv6 dialing failed with malformed address syntax: %v", err)
+	}
+
+	// If IPv6 listener works on host, test successful ping
+	ln, err := net.Listen("tcp", "[::1]:0")
+	if err == nil {
+		defer ln.Close()
+		port := ln.Addr().(*net.TCPAddr).Port
+		dur, err := pinger.TCPPing("::1", port, 500*time.Millisecond)
+		if err != nil {
+			t.Fatalf("expected IPv6 ping to succeed: %v", err)
+		}
+		if dur <= 0 {
+			t.Errorf("expected positive duration, got %v", dur)
+		}
+	}
+}
+
+func TestPinger_ContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	start := time.Now()
+	_, err := pinger.TCPPingContext(ctx, "127.0.0.1", 59996, 2*time.Second)
+	if err == nil {
+		t.Fatalf("expected error on cancelled context, got nil")
+	}
+	if time.Since(start) > 200*time.Millisecond {
+		t.Errorf("expected instant abort on cancelled context, took %v", time.Since(start))
+	}
+
+	configs := []*store.ConfigItem{
+		{ID: "c1", Server: "127.0.0.1", Port: 59996},
+		{ID: "c2", Server: "127.0.0.1", Port: 59995},
+	}
+	results := pinger.BatchPingContext(ctx, configs, 2, 2*time.Second)
+	if len(results) > 0 {
+		t.Errorf("expected empty or aborted results on pre-cancelled context, got %v", results)
+	}
+}
+
+func TestPinger_WorkerPoolBound(t *testing.T) {
+	configs := make([]*store.ConfigItem, 100)
+	for i := 0; i < 100; i++ {
+		configs[i] = &store.ConfigItem{
+			ID:     string(rune('a' + i)),
+			Server: "127.0.0.1",
+			Port:   59994,
+		}
+	}
+
+	concurrency := 3
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	beforeGoroutines := runtime.NumGoroutine()
+
+	done := make(chan struct{})
+	go func() {
+		pinger.BatchPingContext(ctx, configs, concurrency, 500*time.Millisecond)
+		close(done)
+	}()
+
+	var maxGoroutines int
+	for i := 0; i < 5; i++ {
+		time.Sleep(20 * time.Millisecond)
+		current := runtime.NumGoroutine()
+		if current > maxGoroutines {
+			maxGoroutines = current
+		}
+	}
+	<-done
+
+	spawned := maxGoroutines - beforeGoroutines
+	if spawned > concurrency+5 {
+		t.Fatalf("worker pool unbounded: spawned %d goroutines, expected at most %d", spawned, concurrency)
 	}
 }

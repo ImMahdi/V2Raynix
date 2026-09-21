@@ -308,7 +308,7 @@ func (r *Router) handlePingAll(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	results := pinger.BatchPing(configs, 5, 2*time.Second)
+	results := pinger.BatchPingContext(req.Context(), configs, 5, 2*time.Second)
 	for id, lat := range results {
 		_ = r.deps.Store.UpdateLatency(id, lat)
 	}
