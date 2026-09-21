@@ -2,7 +2,9 @@ package core
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -38,6 +40,7 @@ type LogEntry struct {
 type Supervisor struct {
 	store    store.Store
 	mockMode bool
+	dataDir  string
 
 	mu              sync.Mutex
 	state           string
@@ -46,6 +49,11 @@ type Supervisor struct {
 	safeModeTimeout time.Duration
 	safeMode        *network.SafeModeController
 
+	activeRemoteIP string
+	activeIface    string
+	activeGw       string
+	activeSSHPort  int
+
 	xrayCmd      *exec.Cmd
 	tun2socksCmd *exec.Cmd
 
@@ -53,13 +61,18 @@ type Supervisor struct {
 	logsMu sync.RWMutex
 }
 
-func NewSupervisor(st store.Store, safeModeSec int, mockMode bool) *Supervisor {
+func NewSupervisor(st store.Store, safeModeSec int, mockMode bool, dataDirs ...string) *Supervisor {
 	if safeModeSec <= 0 {
 		safeModeSec = 120
+	}
+	dir := "/etc/v2raynix"
+	if len(dataDirs) > 0 && dataDirs[0] != "" {
+		dir = dataDirs[0]
 	}
 	sup := &Supervisor{
 		store:           st,
 		mockMode:        mockMode,
+		dataDir:         dir,
 		state:           "disconnected",
 		safeModeTimeout: time.Duration(safeModeSec) * time.Second,
 		logs:            make([]LogEntry, 0, 500),
@@ -101,16 +114,70 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	}
 
 	// 1. Generate Xray JSON
-	_, err = configmgr.GenerateXrayConfig(cfg, rules, 10808, 10809)
+	rawJSON, err := configmgr.GenerateXrayConfig(cfg, rules, 10808, 10809)
 	if err != nil {
 		s.state = "disconnected"
 		return fmt.Errorf("failed to generate xray config: %w", err)
 	}
 
-	// 2. Start Xray and tun2socks child processes (in production)
+	_ = os.MkdirAll(s.dataDir, 0755)
+	xrayConfigPath := filepath.Join(s.dataDir, "xray-active.json")
+	if err := os.WriteFile(xrayConfigPath, []byte(rawJSON), 0644); err != nil {
+		s.state = "disconnected"
+		return fmt.Errorf("failed to write xray config: %w", err)
+	}
+
+	// 2. Discover default route & SSH port
+	iface, gw, err := network.GetDefaultRoute()
+	if err != nil {
+		s.addLog("warn", fmt.Sprintf("Could not auto-detect default route (%v), using fallback dev", err))
+	}
+	sshPort := network.DetectSSHPort()
+	remoteIP, _ := network.ResolveHost(cfg.Server)
+	if remoteIP == "" {
+		remoteIP = cfg.Server
+	}
+
+	s.activeRemoteIP = remoteIP
+	s.activeIface = iface
+	s.activeGw = gw
+	s.activeSSHPort = sshPort
+
+	// 3. Start Xray child process
+	s.addLog("info", fmt.Sprintf("Launching Xray core on 127.0.0.1:10808 (inbound) -> %s:%d...", cfg.Server, cfg.Port))
+	xrayCmd := exec.Command("xray", "run", "-c", xrayConfigPath)
+	if err := xrayCmd.Start(); err != nil {
+		s.state = "disconnected"
+		return fmt.Errorf("failed to start xray: %w", err)
+	}
+	s.xrayCmd = xrayCmd
+
+	// Give Xray 200ms to initialize
+	time.Sleep(200 * time.Millisecond)
+
+	// 4. Setup routing commands
+	if iface != "" && gw != "" && remoteIP != "" {
+		s.addLog("info", fmt.Sprintf("Configuring Linux routing rules (iface: %s, gw: %s, remoteIP: %s, sshPort: %d)...", iface, gw, remoteIP, sshPort))
+		cmds := network.BuildRoutingCommands(remoteIP, iface, gw, sshPort, 2080)
+		errs := network.ExecuteCommands(cmds)
+		for _, e := range errs {
+			s.addLog("warn", e.Error())
+		}
+	}
+
+	// 5. Start tun2socks
+	s.addLog("info", "Starting tun2socks interface tun0...")
+	tunCmd := exec.Command("tun2socks", "-device", "tun0", "-proxy", "socks5://127.0.0.1:10808")
+	if err := tunCmd.Start(); err != nil {
+		s.addLog("error", fmt.Sprintf("failed to start tun2socks: %v", err))
+		_ = s.stopTunnelLocked()
+		return fmt.Errorf("failed to start tun2socks: %w", err)
+	}
+	s.tun2socksCmd = tunCmd
+
 	s.state = "connected"
 	s.startSafeModeTimerLocked()
-	s.addLog("info", "Tunnel connected successfully")
+	s.addLog("info", "Tunnel connected successfully and routing applied")
 	return nil
 }
 
@@ -125,7 +192,10 @@ func (s *Supervisor) startSafeModeTimerLocked() {
 func (s *Supervisor) StopTunnel() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.stopTunnelLocked()
+}
 
+func (s *Supervisor) stopTunnelLocked() error {
 	s.addLog("info", "Stopping tunnel...")
 	s.state = "rolling_back"
 
@@ -133,13 +203,20 @@ func (s *Supervisor) StopTunnel() error {
 		s.safeMode.Confirm()
 	}
 
+	if s.tun2socksCmd != nil && s.tun2socksCmd.Process != nil {
+		_ = s.tun2socksCmd.Process.Kill()
+		s.tun2socksCmd = nil
+	}
 	if s.xrayCmd != nil && s.xrayCmd.Process != nil {
 		_ = s.xrayCmd.Process.Kill()
 		s.xrayCmd = nil
 	}
-	if s.tun2socksCmd != nil && s.tun2socksCmd.Process != nil {
-		_ = s.tun2socksCmd.Process.Kill()
-		s.tun2socksCmd = nil
+
+	// Clean up Linux network routing
+	if !s.mockMode && s.activeIface != "" && s.activeGw != "" && s.activeRemoteIP != "" {
+		s.addLog("info", "Tearing down Linux routing table and tun0 interface...")
+		cleanupCmds := network.BuildCleanupCommands(s.activeRemoteIP, s.activeIface, s.activeGw, s.activeSSHPort, 2080)
+		_ = network.ExecuteCommands(cleanupCmds)
 	}
 
 	s.state = "disconnected"

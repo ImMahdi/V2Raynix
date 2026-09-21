@@ -2,6 +2,12 @@ package network
 
 import (
 	"fmt"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -82,3 +88,98 @@ func BuildCleanupCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 
 	return cmds
 }
+
+// GetDefaultRoute discovers the current default network interface and gateway
+func GetDefaultRoute() (iface, gateway string, err error) {
+	out, err := exec.Command("ip", "route", "get", "1.1.1.1").Output()
+	if err == nil {
+		fields := strings.Fields(string(out))
+		for i := 0; i < len(fields)-1; i++ {
+			if fields[i] == "via" {
+				gateway = fields[i+1]
+			}
+			if fields[i] == "dev" {
+				iface = fields[i+1]
+			}
+		}
+		if iface != "" && gateway != "" {
+			return iface, gateway, nil
+		}
+	}
+
+	// Fallback to "ip route show default"
+	out, err = exec.Command("ip", "route", "show", "default").Output()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get default route: %w", err)
+	}
+	fields := strings.Fields(string(out))
+	for i := 0; i < len(fields)-1; i++ {
+		if fields[i] == "via" {
+			gateway = fields[i+1]
+		}
+		if fields[i] == "dev" {
+			iface = fields[i+1]
+		}
+	}
+	if iface == "" || gateway == "" {
+		return "", "", fmt.Errorf("could not parse default route: %s", string(out))
+	}
+	return iface, gateway, nil
+}
+
+// DetectSSHPort inspects sshd config and environment to protect the active SSH port
+func DetectSSHPort() int {
+	files := []string{"/etc/ssh/sshd_config"}
+	matches, _ := filepath.Glob("/etc/ssh/sshd_config.d/*.conf")
+	files = append(files, matches...)
+
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(strings.ToLower(line), "port ") {
+				parts := strings.Fields(line)
+				if len(parts) >= 2 {
+					if p, err := strconv.Atoi(parts[1]); err == nil && p > 0 {
+						return p
+					}
+				}
+			}
+		}
+	}
+	return 22
+}
+
+// ResolveHost resolves domain to IP string (or returns IP directly)
+func ResolveHost(host string) (string, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		return host, nil
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil || len(ips) == 0 {
+		return "", fmt.Errorf("cannot resolve host %s: %w", host, err)
+	}
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			return ip.String(), nil
+		}
+	}
+	return ips[0].String(), nil
+}
+
+// ExecuteCommands runs a list of shell commands
+func ExecuteCommands(cmds []string) []error {
+	var errs []error
+	for _, cmd := range cmds {
+		c := exec.Command("sh", "-c", cmd)
+		if out, err := c.CombinedOutput(); err != nil {
+			errs = append(errs, fmt.Errorf("command '%s' failed: %v, output: %s", cmd, err, strings.TrimSpace(string(out))))
+		}
+	}
+	return errs
+}
+
