@@ -175,6 +175,7 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 		return fmt.Errorf("failed to start xray: %w", err)
 	}
 	s.xrayCmd = xrayCmd
+	s.watchProcess(xrayCmd, "xray")
 
 	// Give Xray 200ms to initialize
 	time.Sleep(200 * time.Millisecond)
@@ -215,11 +216,28 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 		return fmt.Errorf("failed to start tun2socks: %w", err)
 	}
 	s.tun2socksCmd = tunCmd
+	s.watchProcess(tunCmd, "tun2socks")
 
 	s.state = "connected"
 	s.startSafeModeTimerLocked()
 	s.addLog("info", "Tunnel connected successfully and routing applied")
 	return nil
+}
+
+func (s *Supervisor) watchProcess(cmd *exec.Cmd, name string) {
+	go func() {
+		err := cmd.Wait()
+
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		// If we are still in "connected" state, this exit was unexpected (crash or kill).
+		// Emergency teardown is required to avoid an unreachable blackhole routing state.
+		if s.state == "connected" {
+			s.addLog("error", fmt.Sprintf("Child process %s exited unexpectedly (%v). Initiating emergency teardown to prevent network blackhole...", name, err))
+			_ = s.stopTunnelLocked()
+		}
+	}()
 }
 
 func (s *Supervisor) startSafeModeTimerLocked() {
