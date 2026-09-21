@@ -86,6 +86,12 @@ func (s *Supervisor) SetSafeModeTimeout(d time.Duration) {
 	s.safeModeTimeout = d
 }
 
+func (s *Supervisor) SetActiveConfig(cfg *store.ConfigItem) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.activeConfig = cfg
+}
+
 func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -261,6 +267,11 @@ func (s *Supervisor) GetStatus() TunnelStatus {
 	if s.activeConfig != nil {
 		activeID = s.activeConfig.ID
 		activeName = s.activeConfig.Name
+	} else if s.store != nil {
+		if cfg, err := s.store.GetActiveConfig(); err == nil && cfg != nil {
+			activeID = cfg.ID
+			activeName = cfg.Name
+		}
 	}
 
 	safeModeInfo := SafeModeInfo{

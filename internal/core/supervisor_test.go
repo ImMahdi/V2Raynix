@@ -117,3 +117,40 @@ func TestSupervisor_SafeModeRollback(t *testing.T) {
 		t.Errorf("expected tunnel to roll back to disconnected, got %s", status.State)
 	}
 }
+
+func TestSupervisor_DisconnectedActiveConfigPreserved(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "v2raynix-supervisor-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	s, err := store.New(filepath.Join(tempDir, "data.json"))
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	cfg := &store.ConfigItem{
+		ID:       "cfg-preselected",
+		Name:     "Preselected Server",
+		Protocol: "vless",
+		Server:   "1.2.3.4",
+		Port:     443,
+		RawURL:   "vless://uuid@1.2.3.4:443?security=none",
+	}
+	_ = s.SaveConfig(cfg)
+	_ = s.SetActiveConfig("cfg-preselected")
+
+	sup := core.NewSupervisor(s, 10, true)
+
+	// Even when disconnected (before StartTunnel is called),
+	// GetStatus() MUST return the active config from the store!
+	status := sup.GetStatus()
+	if status.ActiveConfigID != "cfg-preselected" {
+		t.Fatalf("expected activeConfigId 'cfg-preselected' while disconnected, got '%s'", status.ActiveConfigID)
+	}
+	if status.ActiveConfigName != "Preselected Server" {
+		t.Fatalf("expected activeConfigName 'Preselected Server' while disconnected, got '%s'", status.ActiveConfigName)
+	}
+}
+

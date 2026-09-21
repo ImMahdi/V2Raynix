@@ -273,9 +273,13 @@ func (r *Router) handleActivateConfig(w http.ResponseWriter, req *http.Request) 
 
 	active, _ := r.deps.Store.GetActiveConfig()
 
-	// If tunnel currently running, switch live
-	if r.deps.Supervisor != nil && r.deps.Supervisor.GetStatus().State == "connected" {
-		_ = r.deps.Supervisor.StartTunnel(active)
+	// If tunnel currently running, switch live; otherwise update supervisor preselected config
+	if r.deps.Supervisor != nil {
+		if r.deps.Supervisor.GetStatus().State == "connected" {
+			_ = r.deps.Supervisor.StartTunnel(active)
+		} else {
+			r.deps.Supervisor.SetActiveConfig(active)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
