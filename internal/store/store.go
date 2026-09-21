@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 var (
@@ -80,6 +82,22 @@ func New(filePath string) (*FileStore, error) {
 	return fs, nil
 }
 
+func (fs *FileStore) normalizeData() {
+	if fs.data.Configs == nil {
+		fs.data.Configs = make(map[string]*ConfigItem)
+	}
+	if fs.data.RoutingRules == nil {
+		fs.data.RoutingRules = make(map[string]*RoutingRule)
+	}
+	if fs.data.Settings == nil {
+		fs.data.Settings = &SystemSettings{
+			WebPort:         2080,
+			SafeModeSeconds: 120,
+			AutoStartTunnel: false,
+		}
+	}
+}
+
 func (fs *FileStore) load() error {
 	bytes, err := os.ReadFile(fs.filePath)
 	if err != nil {
@@ -87,25 +105,36 @@ func (fs *FileStore) load() error {
 	}
 
 	var data fileStoreData
-	if err := json.Unmarshal(bytes, &data); err != nil {
-		return fmt.Errorf("corrupted store json: %w", err)
-	}
+	if len(bytes) == 0 || json.Unmarshal(bytes, &data) != nil {
+		// Corrupted or 0-byte primary file detected
+		timestamp := time.Now().UnixNano()
+		corruptArchive := fmt.Sprintf("%s.corrupt.%d", fs.filePath, timestamp)
+		_ = os.Rename(fs.filePath, corruptArchive)
 
-	if data.Configs == nil {
-		data.Configs = make(map[string]*ConfigItem)
-	}
-	if data.RoutingRules == nil {
-		data.RoutingRules = make(map[string]*RoutingRule)
-	}
-	if data.Settings == nil {
-		data.Settings = &SystemSettings{
-			WebPort:         2080,
-			SafeModeSeconds: 120,
-			AutoStartTunnel: false,
+		// Try loading from .bak
+		bakPath := fs.filePath + ".bak"
+		bakBytes, bakErr := os.ReadFile(bakPath)
+		if bakErr == nil && len(bakBytes) > 0 {
+			var bakData fileStoreData
+			if json.Unmarshal(bakBytes, &bakData) == nil {
+				log.Printf("[store] WARNING: Corrupted store at %s recovered from backup (archived corrupt to %s)", fs.filePath, corruptArchive)
+				fs.data = bakData
+				fs.normalizeData()
+				_ = fs.persist()
+				return nil
+			}
 		}
+
+		// Fallback: No valid backup, initialize clean state
+		log.Printf("[store] CRITICAL: Corrupted store at %s and no valid backup found. Initializing clean store (archived corrupt to %s)", fs.filePath, corruptArchive)
+		fs.data = fileStoreData{}
+		fs.normalizeData()
+		_ = fs.persist()
+		return nil
 	}
 
 	fs.data = data
+	fs.normalizeData()
 	return nil
 }
 
@@ -115,16 +144,72 @@ func (fs *FileStore) persist() error {
 		return fmt.Errorf("failed to marshal store data: %w", err)
 	}
 
+	// 1. Write tmp file with explicit sync (STORE-01)
 	tmpFile := fs.filePath + ".tmp"
-	if err := os.WriteFile(tmpFile, bytes, 0600); err != nil {
+	f, err := os.OpenFile(tmpFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open tmp store file: %w", err)
+	}
+
+	if _, err := f.Write(bytes); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmpFile)
 		return fmt.Errorf("failed to write tmp store file: %w", err)
 	}
 
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmpFile)
+		return fmt.Errorf("failed to sync tmp store file: %w", err)
+	}
+
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmpFile)
+		return fmt.Errorf("failed to close tmp store file: %w", err)
+	}
+
+	// 2. Snapshot current valid file to .bak before replacing
+	bakFile := fs.filePath + ".bak"
+	if existingBytes, err := os.ReadFile(fs.filePath); err == nil && len(existingBytes) > 0 {
+		var dummy interface{}
+		if json.Unmarshal(existingBytes, &dummy) == nil {
+			writeSyncFile(bakFile, existingBytes)
+		}
+	}
+
+	// 3. Atomic rename tmp to primary
 	if err := os.Rename(tmpFile, fs.filePath); err != nil {
 		return fmt.Errorf("failed to atomic rename store file: %w", err)
 	}
 
+	// 4. Ensure .bak exists even if this was first write
+	if _, err := os.Stat(bakFile); os.IsNotExist(err) {
+		writeSyncFile(bakFile, bytes)
+	}
+
+	// 5. Best-effort parent directory sync
+	if dirF, err := os.Open(filepath.Dir(fs.filePath)); err == nil {
+		_ = dirF.Sync()
+		_ = dirF.Close()
+	}
+
 	return nil
+}
+
+func writeSyncFile(path string, data []byte) {
+	tmpPath := path + ".tmp"
+	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmpPath)
+		return
+	}
+	_ = f.Sync()
+	_ = f.Close()
+	_ = os.Rename(tmpPath, path)
 }
 
 func (fs *FileStore) GetConfigs() ([]*ConfigItem, error) {
