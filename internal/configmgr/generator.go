@@ -289,15 +289,36 @@ func buildProxyOutbound(cfg *store.ConfigItem) (map[string]interface{}, error) {
 
 		var method, password string
 		if strings.Contains(mainPart, "@") {
+			// SIP002 format: base64(method:password)@host:port
 			sub := strings.SplitN(mainPart, "@", 2)
 			decoded, err := decodeBase64(sub[0])
-			if err == nil {
-				mp := strings.SplitN(string(decoded), ":", 2)
+			if err != nil {
+				return nil, fmt.Errorf("invalid base64 in shadowsocks URL: %w", err)
+			}
+			mp := strings.SplitN(string(decoded), ":", 2)
+			if len(mp) == 2 {
+				method = mp[0]
+				password = mp[1]
+			}
+		} else {
+			// Legacy format: base64(method:password@host:port)
+			decoded, err := decodeBase64(mainPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid base64 in legacy shadowsocks URL: %w", err)
+			}
+			decStr := string(decoded)
+			if strings.Contains(decStr, "@") {
+				sub := strings.SplitN(decStr, "@", 2)
+				mp := strings.SplitN(sub[0], ":", 2)
 				if len(mp) == 2 {
 					method = mp[0]
 					password = mp[1]
 				}
 			}
+		}
+
+		if method == "" || password == "" {
+			return nil, fmt.Errorf("missing or invalid method/password in shadowsocks configuration")
 		}
 
 		servers := map[string]interface{}{
