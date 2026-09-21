@@ -1,12 +1,49 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react';
 
 export default function SafeModeModal({ remainingSeconds, onConfirm, onRollback }) {
-  if (remainingSeconds <= 0) return null;
+  const [localRemaining, setLocalRemaining] = useState(remainingSeconds || 0);
+  const [submitting, setSubmitting] = useState(false);
 
-  const minutes = Math.floor(remainingSeconds / 60);
-  const seconds = remainingSeconds % 60;
+  // Sync with server state
+  useEffect(() => {
+    setLocalRemaining(remainingSeconds || 0);
+  }, [remainingSeconds]);
+
+  // Smooth 1-second interpolated countdown (WEB-07)
+  useEffect(() => {
+    if (localRemaining <= 0) return;
+    const interval = setInterval(() => {
+      setLocalRemaining(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [localRemaining > 0]);
+
+  if (localRemaining <= 0) return null;
+
+  const minutes = Math.floor(localRemaining / 60);
+  const seconds = localRemaining % 60;
   const timeFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+
+  const handleConfirmClick = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await onConfirm();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRollbackClick = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await onRollback();
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="modal-overlay">
@@ -50,23 +87,25 @@ export default function SafeModeModal({ remainingSeconds, onConfirm, onRollback 
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Action Buttons with Submitting Protection (WEB-07) */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
           <button 
             className="btn btn-danger" 
-            onClick={onRollback}
+            onClick={handleRollbackClick}
+            disabled={submitting}
             style={{ padding: '0.75rem 1rem' }}
           >
-            <RotateCcw size={16} />
-            Revert Now
+            <RotateCcw size={16} className={submitting ? 'animate-spin' : ''} />
+            {submitting ? 'Reverting...' : 'Revert Now'}
           </button>
           <button 
             className="btn btn-success" 
-            onClick={onConfirm}
+            onClick={handleConfirmClick}
+            disabled={submitting}
             style={{ padding: '0.75rem 1rem' }}
           >
             <CheckCircle2 size={16} />
-            Confirm & Keep
+            {submitting ? 'Confirming...' : 'Confirm & Keep'}
           </button>
         </div>
       </div>

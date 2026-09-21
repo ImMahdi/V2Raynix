@@ -118,7 +118,9 @@ export default function SettingsPage() {
         <div style={{ fontSize: '0.875rem', lineHeight: 1.8, color: 'var(--text-secondary)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.4rem' }}>
             <span>Web UI Port:</span>
-            <strong style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>2080</strong>
+            <strong style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+              {window?.location?.port || '2080'}
+            </strong>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '0.4rem 0' }}>
             <span>Local SOCKS5 Port:</span>

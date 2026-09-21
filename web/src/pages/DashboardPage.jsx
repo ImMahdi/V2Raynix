@@ -1,7 +1,7 @@
 import React from 'react';
 import { Power, Shield, Activity, Network, Clock, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
-export default function DashboardPage({ status, configs, onToggleTunnel, onSelectTab }) {
+export default function DashboardPage({ status, configs, onToggleTunnel, onSelectTab, toggling }) {
   const isConnected = status?.state === 'connected';
   const isConnecting = status?.state === 'connecting';
   const activeConfig = configs.find(c => c.id === status?.activeConfigId);
@@ -21,13 +21,13 @@ export default function DashboardPage({ status, configs, onToggleTunnel, onSelec
       {/* Master Toggle Banner */}
       <div className="glass-card master-switch-container" style={{ marginBottom: '2rem' }}>
         <button 
-          className={`master-btn ${isConnected ? 'connected' : ''} ${isConnecting ? 'connecting' : ''}`}
+          className={`master-btn ${isConnected ? 'connected' : ''} ${(isConnecting || toggling) ? 'connecting' : ''}`}
           onClick={onToggleTunnel}
-          disabled={isConnecting}
+          disabled={isConnecting || toggling}
         >
           <Power size={48} strokeWidth={2.5} />
           <span style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '0.05em' }}>
-            {isConnected ? 'CONNECTED' : isConnecting ? 'STARTING...' : 'DISCONNECTED'}
+            {toggling ? 'SWITCHING...' : isConnected ? 'CONNECTED' : isConnecting ? 'STARTING...' : 'DISCONNECTED'}
           </span>
         </button>
 
