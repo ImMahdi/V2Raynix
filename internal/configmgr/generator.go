@@ -37,7 +37,7 @@ func GenerateXrayConfig(activeConfig *store.ConfigItem, rules []*store.RoutingRu
 			},
 			"sniffing": map[string]interface{}{
 				"enabled":      true,
-				"destOverride": []string{"http", "tls"},
+				"destOverride": []string{"http", "tls", "quic"},
 			},
 		},
 		{
@@ -250,6 +250,16 @@ func buildProxyOutbound(cfg *store.ConfigItem) (map[string]interface{}, error) {
 	default:
 		return nil, fmt.Errorf("unsupported protocol for outbound: %s", cfg.Protocol)
 	}
+
+	// Ensure streamSettings has sockopt with mark 81 (0x51) for Linux policy routing anti-loop bypass
+	ss, ok := outbound["streamSettings"].(map[string]interface{})
+	if !ok || ss == nil {
+		ss = make(map[string]interface{})
+	}
+	ss["sockopt"] = map[string]interface{}{
+		"mark": 81,
+	}
+	outbound["streamSettings"] = ss
 
 	return outbound, nil
 }
