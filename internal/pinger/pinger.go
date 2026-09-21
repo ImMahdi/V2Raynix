@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -12,17 +13,25 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-// TCPPing measures the TCP handshake time to a target server and port
-func TCPPing(host string, port int, timeout time.Duration) (time.Duration, error) {
-	addr := fmt.Sprintf("%s:%d", host, port)
+// TCPPingContext measures the TCP handshake time to a target server and port with context support
+func TCPPingContext(ctx context.Context, host string, port int, timeout time.Duration) (time.Duration, error) {
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	dialer := &net.Dialer{
+		Timeout: timeout,
+	}
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", addr, timeout)
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return 0, err
 	}
 	defer conn.Close()
 
 	return time.Since(start), nil
+}
+
+// TCPPing measures the TCP handshake time to a target server and port (backward compatible)
+func TCPPing(host string, port int, timeout time.Duration) (time.Duration, error) {
+	return TCPPingContext(context.Background(), host, port, timeout)
 }
 
 // RealHTTPDelay tests round-trip HTTP response through a local SOCKS5 proxy
@@ -62,8 +71,8 @@ func RealHTTPDelay(socksProxyAddr, targetURL string, timeout time.Duration) (tim
 	return time.Since(start), nil
 }
 
-// BatchPing tests multiple configs concurrently and returns latencies in milliseconds
-func BatchPing(configs []*store.ConfigItem, concurrency int, timeout time.Duration) map[string]int {
+// BatchPingContext tests multiple configs using a bounded worker pool and context cancellation
+func BatchPingContext(ctx context.Context, configs []*store.ConfigItem, concurrency int, timeout time.Duration) map[string]int {
 	if concurrency <= 0 {
 		concurrency = 5
 	}
@@ -72,33 +81,61 @@ func BatchPing(configs []*store.ConfigItem, concurrency int, timeout time.Durati
 	}
 
 	results := make(map[string]int)
-	var mu sync.Mutex
+	if len(configs) == 0 {
+		return results
+	}
 
-	sem := make(chan struct{}, concurrency)
+	// Bound worker goroutines to min(concurrency, len(configs))
+	numWorkers := concurrency
+	if len(configs) < numWorkers {
+		numWorkers = len(configs)
+	}
+
+	jobs := make(chan *store.ConfigItem, len(configs))
+	for _, cfg := range configs {
+		jobs <- cfg
+	}
+	close(jobs)
+
+	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	for _, cfg := range configs {
+	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go func(c *store.ConfigItem) {
+		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			latencyMs := -1
-			dur, err := TCPPing(c.Server, c.Port, timeout)
-			if err == nil {
-				latencyMs = int(dur.Milliseconds())
-				if latencyMs == 0 {
-					latencyMs = 1
+			for cfg := range jobs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
 				}
-			}
 
-			mu.Lock()
-			results[c.ID] = latencyMs
-			mu.Unlock()
-		}(cfg)
+				latencyMs := -1
+				dur, err := TCPPingContext(ctx, cfg.Server, cfg.Port, timeout)
+				if err == nil {
+					latencyMs = int(dur.Milliseconds())
+					if latencyMs <= 0 {
+						latencyMs = 1
+					}
+				}
+
+				if ctx.Err() != nil {
+					return
+				}
+
+				mu.Lock()
+				results[cfg.ID] = latencyMs
+				mu.Unlock()
+			}
+		}()
 	}
 
 	wg.Wait()
 	return results
+}
+
+// BatchPing tests multiple configs concurrently and returns latencies in milliseconds (backward compatible)
+func BatchPing(configs []*store.ConfigItem, concurrency int, timeout time.Duration) map[string]int {
+	return BatchPingContext(context.Background(), configs, concurrency, timeout)
 }
