@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -125,8 +126,20 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 	}
 
 	admin, err := r.deps.Store.GetAdminUser()
-	if err != nil || admin == nil {
-		// Initialize default admin if none exists
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			// Initialize default admin only if explicitly not found in store
+			hash, _ := auth.HashPassword("admin")
+			admin = &store.UserAccount{
+				Username:     "admin",
+				PasswordHash: hash,
+			}
+			_ = r.deps.Store.SetAdminUser(admin)
+		} else {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to query user store"})
+			return
+		}
+	} else if admin == nil {
 		hash, _ := auth.HashPassword("admin")
 		admin = &store.UserAccount{
 			Username:     "admin",

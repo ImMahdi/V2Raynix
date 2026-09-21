@@ -3,6 +3,7 @@ package api_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -180,5 +181,66 @@ func TestAPI_TunnelEndpoints(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &status)
 	if status["state"] != "disconnected" {
 		t.Errorf("expected state disconnected, got %s", status["state"])
+	}
+}
+
+type errorStore struct {
+	store.Store
+	getAdminErr error
+	setAdminCalled bool
+}
+
+func (e *errorStore) GetAdminUser() (*store.UserAccount, error) {
+	if e.getAdminErr != nil {
+		return nil, e.getAdminErr
+	}
+	return e.Store.GetAdminUser()
+}
+
+func (e *errorStore) SetAdminUser(user *store.UserAccount) error {
+	e.setAdminCalled = true
+	return e.Store.SetAdminUser(user)
+}
+
+func TestLoginStoreErrorHandling(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "v2raynix-api-err-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	st, err := store.New(filepath.Join(tempDir, "data.json"))
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	mockErrStore := &errorStore{
+		Store:       st,
+		getAdminErr: errors.New("simulated I/O disk corruption"),
+	}
+
+	sup := core.NewSupervisor(mockErrStore, 60, true)
+	deps := &api.Dependencies{
+		Store:      mockErrStore,
+		Supervisor: sup,
+		JWTSecret:  []byte("test-jwt-secret-key-32-chars-long!"),
+	}
+	router := api.NewRouter(deps)
+
+	loginBody, _ := json.Marshal(map[string]string{
+		"username": "admin",
+		"password": "anypassword",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	// It must NOT reset admin or return 401 based on fake "admin:admin"
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected HTTP 500 when store fails, got HTTP %d", rec.Code)
+	}
+
+	if mockErrStore.setAdminCalled {
+		t.Fatalf("SECURITY VIOLATION: SetAdminUser was called on store error (API-01 regression)")
 	}
 }
