@@ -26,7 +26,11 @@ func TCPPingContext(ctx context.Context, host string, port int, timeout time.Dur
 	}
 	defer conn.Close()
 
-	return time.Since(start), nil
+	dur := time.Since(start)
+	if dur <= 0 {
+		dur = time.Microsecond
+	}
+	return dur, nil
 }
 
 // TCPPing measures the TCP handshake time to a target server and port (backward compatible)
