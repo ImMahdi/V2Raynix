@@ -297,3 +297,114 @@ func TestLoginStoreErrorHandling(t *testing.T) {
 		t.Fatalf("SECURITY VIOLATION: SetAdminUser was called on store error (API-01 regression)")
 	}
 }
+
+func TestAPI_RequestBodySizeLimit(t *testing.T) {
+	router, tempDir := setupTestRouter(t)
+	defer os.RemoveAll(tempDir)
+
+	// Construct payload larger than 2MB limit (e.g. 2.5 MB)
+	largeData := make([]byte, 2500000)
+	for i := range largeData {
+		largeData[i] = 'a'
+	}
+	largeJSON, _ := json.Marshal(map[string]string{
+		"username": "admin",
+		"password": string(largeData),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(largeJSON))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge && rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected HTTP 413 or 400 for oversized payload, got HTTP %d", rec.Code)
+	}
+
+	var resp map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp["error"] == "" {
+		t.Errorf("expected error message in response body")
+	}
+}
+
+func TestAPI_LoginRateLimiting(t *testing.T) {
+	router, tempDir := setupTestRouter(t)
+	defer os.RemoveAll(tempDir)
+
+	clientAddr := "192.168.1.100:54321"
+
+	// 5 failed login attempts
+	for i := 1; i <= 5; i++ {
+		loginBody, _ := json.Marshal(map[string]string{
+			"username": "admin",
+			"password": "wrong-password",
+		})
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+		req.RemoteAddr = clientAddr
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401 Unauthorized, got %d", i, rec.Code)
+		}
+	}
+
+	// 6th attempt should be blocked by rate limiter (HTTP 429)
+	loginBody, _ := json.Marshal(map[string]string{
+		"username": "admin",
+		"password": "admin123", // Even with correct password, blocked
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	req.RemoteAddr = clientAddr
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected HTTP 429 Too Many Requests on 6th attempt, got HTTP %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Another client IP should still be allowed
+	otherAddr := "192.168.1.101:54321"
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	req.RemoteAddr = otherAddr
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected other client IP to succeed with 200 OK, got HTTP %d", rec.Code)
+	}
+
+	// Verify counter reset on successful login:
+	// A client fails 3 times (< 5), logs in successfully, resetting counter to 0.
+	resetClientAddr := "192.168.1.102:54321"
+	for i := 0; i < 3; i++ {
+		badReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader([]byte(`{"username":"admin","password":"bad"}`)))
+		badReq.RemoteAddr = resetClientAddr
+		badRec := httptest.NewRecorder()
+		router.ServeHTTP(badRec, badReq)
+		if badRec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401, got %d", badRec.Code)
+		}
+	}
+
+	// Successful login resets counter
+	goodReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	goodReq.RemoteAddr = resetClientAddr
+	goodRec := httptest.NewRecorder()
+	router.ServeHTTP(goodRec, goodReq)
+	if goodRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", goodRec.Code)
+	}
+
+	// Should now be able to fail 4 more times without being blocked (since counter was reset)
+	for i := 0; i < 4; i++ {
+		badReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader([]byte(`{"username":"admin","password":"bad"}`)))
+		badReq.RemoteAddr = resetClientAddr
+		badRec := httptest.NewRecorder()
+		router.ServeHTTP(badRec, badReq)
+		if badRec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 on attempt %d after reset, got %d", i+1, badRec.Code)
+		}
+	}
+}
+
