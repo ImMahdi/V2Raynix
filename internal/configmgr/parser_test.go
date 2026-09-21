@@ -219,3 +219,37 @@ func TestParser_ShadowsocksQuery(t *testing.T) {
 	}
 }
 
+func TestParser_VMessTypesAndBoundaries(t *testing.T) {
+	// 1. Port as raw int in JSON (not string)
+	b64_1 := "eyJ2IjoiMiIsInBzIjoidGVzdDEiLCJhZGQiOiIxLjEuMS4xIiwicG9ydCI6ODQ0MywiaWQiOiI5NmM0ZDdiMi01MjBlLTRiNjktOGNlMi00ZTBkNGM4MmI5NTIiLCJhaWQiOjY0LCJuZXQiOiJ3cyJ9"
+	cfg1, err := configmgr.ParseShareLink("vmess://" + b64_1)
+	if err != nil {
+		t.Fatalf("expected VMess with integer port to parse successfully, got: %v", err)
+	}
+	if cfg1.Port != 8443 {
+		t.Errorf("expected port 8443, got %d", cfg1.Port)
+	}
+
+	// 2. Port out of boundary (> 65535)
+	b64_2 := "eyJ2IjoiMiIsInBzIjoidGVzdDIiLCJhZGQiOiIxLjEuMS4xIiwicG9ydCI6NzAwMDAsImlkIjoiOTZjNGQ3YjItNTIwZS00YjY5LThjZTItNGUwZDRjODJiOTUyIn0="
+	_, err = configmgr.ParseShareLink("vmess://" + b64_2)
+	if err == nil {
+		t.Errorf("expected error for port > 65535, but got nil")
+	}
+
+	// 3. Port <= 0
+	b64_3 := "eyJ2IjoiMiIsInBzIjoidGVzdDMiLCJhZGQiOiIxLjEuMS4xIiwicG9ydCI6MCwiaWQiOiI5NmM0ZDdiMi01MjBlLTRiNjktOGNlMi00ZTBkNGM4MmI5NTIifQ=="
+	_, err = configmgr.ParseShareLink("vmess://" + b64_3)
+	if err == nil {
+		t.Errorf("expected error for port <= 0, but got nil")
+	}
+
+	// 4. Missing / empty ID
+	b64_4 := "eyJ2IjoiMiIsInBzIjoidGVzdDQiLCJhZGQiOiIxLjEuMS4xIiwicG9ydCI6NDQzLCJpZCI6IiJ9"
+	_, err = configmgr.ParseShareLink("vmess://" + b64_4)
+	if err == nil {
+		t.Errorf("expected error for empty VMess ID, but got nil")
+	}
+}
+
+

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/v2raynix/v2raynix/internal/store"
@@ -217,13 +218,25 @@ func buildProxyOutbound(cfg *store.ConfigItem) (map[string]interface{}, error) {
 			return nil, err
 		}
 
+		alterID := 0
+		switch a := vmess.Aid.(type) {
+		case float64:
+			alterID = int(a)
+		case int:
+			alterID = a
+		case int64:
+			alterID = int(a)
+		case string:
+			alterID, _ = strconv.Atoi(strings.TrimSpace(a))
+		}
+
 		vnext := map[string]interface{}{
 			"address": cfg.Server,
 			"port":    cfg.Port,
 			"users": []map[string]interface{}{
 				{
 					"id":       vmess.ID,
-					"alterId":  0,
+					"alterId":  alterID,
 					"security": "auto",
 				},
 			},

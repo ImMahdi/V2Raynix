@@ -113,11 +113,15 @@ func parseVMess(link string) (*store.ConfigItem, error) {
 	switch p := vmess.Port.(type) {
 	case float64:
 		port = int(p)
+	case int:
+		port = p
+	case int64:
+		port = int(p)
 	case string:
-		port, _ = strconv.Atoi(p)
+		port, _ = strconv.Atoi(strings.TrimSpace(p))
 	}
 
-	if vmess.Add == "" || port <= 0 {
+	if strings.TrimSpace(vmess.Add) == "" || port <= 0 || port > 65535 || strings.TrimSpace(vmess.ID) == "" {
 		return nil, ErrMalformedLink
 	}
 
