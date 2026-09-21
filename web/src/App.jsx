@@ -114,6 +114,7 @@ export default function App() {
 
   // Config actions
   const handleActivateConfig = async (id) => {
+    setStatus(prev => (prev ? { ...prev, activeConfigId: id } : { activeConfigId: id }));
     try {
       await api.activateConfig(id);
       const [newStat, newCfgs] = await Promise.all([
