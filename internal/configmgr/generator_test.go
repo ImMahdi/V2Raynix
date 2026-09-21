@@ -182,3 +182,37 @@ func TestDirectOutboundMark(t *testing.T) {
 		t.Errorf("expected sockopt.mark == 81 on direct outbound, got %v", sockopt["mark"])
 	}
 }
+
+func TestGenerateXrayConfig_VMessAlterID(t *testing.T) {
+	// VMess config with aid = 64
+	b64 := "eyJ2IjoiMiIsInBzIjoiYWlkLW5vZGUiLCJhZGQiOiIxLjIuMy40IiwicG9ydCI6IjQ0MyIsImlkIjoiOTZjNGQ3YjItNTIwZS00YjY5LThjZTItNGUwZDRjODJiOTUyIiwiYWlkIjoiNjQiLCJuZXQiOiJ0Y3AifQ=="
+	cfg := &store.ConfigItem{
+		ID:       "cfg-vmess-aid",
+		Name:     "VMess Aid",
+		Protocol: "vmess",
+		Server:   "1.2.3.4",
+		Port:     443,
+		RawURL:   "vmess://" + b64,
+	}
+
+	data, err := configmgr.GenerateXrayConfig(cfg, nil, 10808, 10809)
+	if err != nil {
+		t.Fatalf("GenerateXrayConfig failed: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	outbounds := parsed["outbounds"].([]interface{})
+	proxyOut := outbounds[0].(map[string]interface{})
+	settings := proxyOut["settings"].(map[string]interface{})
+	vnext := settings["vnext"].([]interface{})[0].(map[string]interface{})
+	users := vnext["users"].([]interface{})[0].(map[string]interface{})
+
+	if aid, ok := users["alterId"].(float64); !ok || int(aid) != 64 {
+		t.Errorf("expected alterId 64, got %v", users["alterId"])
+	}
+}
+
