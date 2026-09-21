@@ -11,10 +11,13 @@ import (
 )
 
 const (
-	TunDevice   = "tun0"
-	TunIP       = "198.18.0.1/15"
-	TableID     = 100
-	FwmarkValue = "0x51"
+	TunDevice       = "tun0"
+	TunIP           = "198.18.0.1/15"
+	TableID         = 100
+	FwmarkValue     = "0x51"
+	InboundFwmark   = "0x52"
+	InboundPriority = 1008
+	InboundChain    = "V2RAYNIX_INBOUND"
 )
 
 // BuildRoutingCommands produces the ordered list of Linux ip commands to setup tun0 and safe policy routing
@@ -44,16 +47,24 @@ func BuildRoutingCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 		fmt.Sprintf("ip rule add sport %d table main priority 1002", webPort),
 		fmt.Sprintf("ip rule add dport %d table main priority 1003", webPort),
 
-		// 5. Bypass RFC1918 private IP subnets
+		// 5. Inbound Connection Preservation via Netfilter Connmark
+		fmt.Sprintf("iptables -t mangle -N %s", InboundChain),
+		fmt.Sprintf("iptables -t mangle -F %s", InboundChain),
+		fmt.Sprintf("iptables -t mangle -A PREROUTING -i %s -m conntrack --ctstate NEW -j %s", defaultIface, InboundChain),
+		fmt.Sprintf("iptables -t mangle -A %s -j CONNMARK --set-mark %s", InboundChain, InboundFwmark),
+		fmt.Sprintf("iptables -t mangle -A OUTPUT -m connmark --mark %s -j CONNMARK --restore-mark", InboundFwmark),
+		fmt.Sprintf("ip rule add fwmark %s table main priority %d", InboundFwmark, InboundPriority),
+
+		// 6. Bypass RFC1918 private IP subnets
 		"ip rule add to 10.0.0.0/8 table main priority 1010",
 		"ip rule add to 172.16.0.0/12 table main priority 1011",
 		"ip rule add to 192.168.0.0/16 table main priority 1012",
 		"ip rule add to 127.0.0.0/8 table main priority 1013",
 
-		// 6. Policy route table 100 through tun0
+		// 7. Policy route table 100 through tun0
 		fmt.Sprintf("ip route add default dev %s table %d", TunDevice, TableID),
 
-		// 7. Divert non-marked traffic to table 100
+		// 8. Divert non-marked traffic to table 100
 		fmt.Sprintf("ip rule add not fwmark %s table %d priority 2000", FwmarkValue, TableID),
 	}
 
@@ -81,6 +92,13 @@ func BuildCleanupCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 		fmt.Sprintf("ip rule del sport %d table main", webPort),
 		fmt.Sprintf("ip rule del to %s table main priority 999", remoteProxyIP),
 		"ip rule del priority 999",
+
+		// Remove conntrack rules and custom chain
+		fmt.Sprintf("iptables -t mangle -D PREROUTING -i %s -m conntrack --ctstate NEW -j %s", defaultIface, InboundChain),
+		fmt.Sprintf("iptables -t mangle -D OUTPUT -m connmark --mark %s -j CONNMARK --restore-mark", InboundFwmark),
+		fmt.Sprintf("iptables -t mangle -F %s", InboundChain),
+		fmt.Sprintf("iptables -t mangle -X %s", InboundChain),
+		fmt.Sprintf("ip rule del fwmark %s table main", InboundFwmark),
 
 		// Flush custom table
 		fmt.Sprintf("ip route flush table %d", TableID),
