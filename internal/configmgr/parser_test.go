@@ -178,3 +178,44 @@ func TestGenerateXrayConfig(t *testing.T) {
 		t.Errorf("expected local socks port 10808 in config")
 	}
 }
+
+func TestParser_VMessFragment(t *testing.T) {
+	// VMess share link with fragment at the end
+	link := "vmess://eyJ2IjoiMiIsInBzIjoidGVzdCIsImFkZCI6IjEuMi4zLjQiLCJwb3J0IjoiNDQzIiwiaWQiOiJhNmM0ZDdiMi01MjBlLTRiNjktOGNlMi00ZTBkNGM4MmI5NTIiLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6IndzIiwidHlwZSI6Im5vbmUiLCJob3N0IjoiZXhhbXBsZS5jb20iLCJwYXRoIjoiL3dzIiwidGxzIjoiIn0=#RemarkFragment"
+	cfg, err := configmgr.ParseShareLink(link)
+	if err != nil {
+		t.Fatalf("expected VMess with fragment to parse successfully, got error: %v", err)
+	}
+	if cfg.Server != "1.2.3.4" || cfg.Port != 443 {
+		t.Errorf("unexpected parsed server or port: %s:%d", cfg.Server, cfg.Port)
+	}
+}
+
+func TestParser_Base64Whitespace(t *testing.T) {
+	// Base64 with embedded newlines and spaces
+	rawB64 := "eyJ2IjoiMiIsInBzIjoidGVzdCIsImFkZCI6IjEuMi4zLjQiLCJwb3J0IjoiNDQzIiwiaWQiOiJhNmM0ZDdi\r\nMi01MjBlLTRiNjktOGNlMi00ZTBkNGM4MmI5NTIiLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6Indz\nIiwidHlwZSI6Im5vbmUiLCJob3N0IjoiZXhhbXBsZS5jb20iLCJwYXRoIjoiL3dzIiwidGxzIjoiIn0= "
+	link := "vmess://" + rawB64
+	cfg, err := configmgr.ParseShareLink(link)
+	if err != nil {
+		t.Fatalf("expected VMess with whitespace base64 to parse successfully, got: %v", err)
+	}
+	if cfg.Server != "1.2.3.4" {
+		t.Errorf("expected server 1.2.3.4, got %s", cfg.Server)
+	}
+}
+
+func TestParser_ShadowsocksQuery(t *testing.T) {
+	// Shadowsocks link with plugin query parameters
+	link := "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ=@198.51.100.4:8388?plugin=obfs-local%3Bobfs%3Dhttp#Tokyo-SS"
+	cfg, err := configmgr.ParseShareLink(link)
+	if err != nil {
+		t.Fatalf("expected Shadowsocks with query parameters to parse successfully, got: %v", err)
+	}
+	if cfg.Port != 8388 {
+		t.Errorf("expected port 8388, got %d", cfg.Port)
+	}
+	if cfg.Server != "198.51.100.4" {
+		t.Errorf("expected server 198.51.100.4, got %s", cfg.Server)
+	}
+}
+
