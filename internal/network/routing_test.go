@@ -48,6 +48,23 @@ func TestBuildRoutingCommands(t *testing.T) {
 	if !strings.Contains(joined, "table 100") || !strings.Contains(joined, "dev tun0") {
 		t.Errorf("expected table 100 default route via tun0")
 	}
+
+	// Verify Netfilter conntrack inbound preservation
+	if !strings.Contains(joined, "iptables -t mangle -N V2RAYNIX_INBOUND") {
+		t.Errorf("expected creation of V2RAYNIX_INBOUND chain")
+	}
+	if !strings.Contains(joined, "iptables -t mangle -A PREROUTING -i eth0 -m conntrack --ctstate NEW -j V2RAYNIX_INBOUND") {
+		t.Errorf("expected PREROUTING jump to V2RAYNIX_INBOUND")
+	}
+	if !strings.Contains(joined, "iptables -t mangle -A V2RAYNIX_INBOUND -j CONNMARK --set-mark 0x52") {
+		t.Errorf("expected CONNMARK set-mark 0x52")
+	}
+	if !strings.Contains(joined, "iptables -t mangle -A OUTPUT -m connmark --mark 0x52 -j CONNMARK --restore-mark") {
+		t.Errorf("expected OUTPUT restore-mark 0x52")
+	}
+	if !strings.Contains(joined, "ip rule add fwmark 0x52 table main priority 1008") {
+		t.Errorf("expected ip rule for fwmark 0x52 table main priority 1008")
+	}
 }
 
 func TestBuildCleanupCommands(t *testing.T) {
@@ -73,5 +90,19 @@ func TestBuildCleanupCommands(t *testing.T) {
 	}
 	if !strings.Contains(joined, "ip tuntap del dev tun0 mode tun") && !strings.Contains(joined, "ip link del dev tun0") {
 		t.Errorf("expected delete tun0 in cleanup")
+	}
+
+	// Must clean up conntrack rules and chain
+	if !strings.Contains(joined, "iptables -t mangle -D PREROUTING -i eth0 -m conntrack --ctstate NEW -j V2RAYNIX_INBOUND") {
+		t.Errorf("expected deletion of PREROUTING jump rule in cleanup")
+	}
+	if !strings.Contains(joined, "iptables -t mangle -D OUTPUT -m connmark --mark 0x52 -j CONNMARK --restore-mark") {
+		t.Errorf("expected deletion of OUTPUT restore-mark rule in cleanup")
+	}
+	if !strings.Contains(joined, "iptables -t mangle -F V2RAYNIX_INBOUND") || !strings.Contains(joined, "iptables -t mangle -X V2RAYNIX_INBOUND") {
+		t.Errorf("expected flush and delete of V2RAYNIX_INBOUND chain in cleanup")
+	}
+	if !strings.Contains(joined, "ip rule del fwmark 0x52 table main") {
+		t.Errorf("expected deletion of fwmark 0x52 rule in cleanup")
 	}
 }
