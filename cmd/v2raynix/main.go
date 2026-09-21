@@ -84,7 +84,7 @@ func main() {
 	if settings != nil && settings.SafeModeSeconds > 0 {
 		safeModeSec = settings.SafeModeSeconds
 	}
-	sup := core.NewSupervisor(st, safeModeSec, *mockMode)
+	sup := core.NewSupervisor(st, safeModeSec, *mockMode, targetDir)
 
 	// Embedded Static Assets
 	staticFS, err := web.GetStaticFS()
