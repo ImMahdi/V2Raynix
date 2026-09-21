@@ -154,3 +154,52 @@ func TestSupervisor_DisconnectedActiveConfigPreserved(t *testing.T) {
 	}
 }
 
+func TestSupervisor_RollbackSafeMode_ManualDeadlockCheck(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "v2raynix-supervisor-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	s, err := store.New(filepath.Join(tempDir, "data.json"))
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	sup := core.NewSupervisor(s, 120, true) // 120s timeout, mockMode
+
+	cfg := &store.ConfigItem{
+		ID:       "cfg-test-rollback",
+		Name:     "Mock Server Rollback",
+		Protocol: "vless",
+		Server:   "3.3.3.3",
+		Port:     443,
+		RawURL:   "vless://uuid@3.3.3.3:443?security=none",
+	}
+
+	err = sup.StartTunnel(cfg)
+	if err != nil {
+		t.Fatalf("failed to start tunnel: %v", err)
+	}
+
+	done := make(chan bool)
+	go func() {
+		ok := sup.RollbackSafeMode()
+		done <- ok
+	}()
+
+	select {
+	case ok := <-done:
+		if !ok {
+			t.Errorf("expected RollbackSafeMode to return true")
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatalf("DEADLOCK DETECTED: RollbackSafeMode failed to return within 1s")
+	}
+
+	status := sup.GetStatus()
+	if status.State != "disconnected" {
+		t.Errorf("expected disconnected state after rollback, got %s", status.State)
+	}
+}
+

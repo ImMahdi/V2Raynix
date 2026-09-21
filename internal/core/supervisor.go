@@ -53,6 +53,7 @@ type Supervisor struct {
 	activeIface    string
 	activeGw       string
 	activeSSHPort  int
+	activeWebPort  int
 
 	xrayCmd      *exec.Cmd
 	tun2socksCmd *exec.Cmd
@@ -180,12 +181,20 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 
 	// 4. Setup routing commands
 	if iface != "" && gw != "" && remoteIP != "" {
-		s.addLog("info", fmt.Sprintf("Configuring Linux routing rules (iface: %s, gw: %s, remoteIP: %s, sshPort: %d)...", iface, gw, remoteIP, sshPort))
+		webPort := 2080
+		if s.store != nil {
+			if settings, err := s.store.GetSettings(); err == nil && settings != nil && settings.WebPort > 0 {
+				webPort = settings.WebPort
+			}
+		}
+		s.activeWebPort = webPort
+
+		s.addLog("info", fmt.Sprintf("Configuring Linux routing rules (iface: %s, gw: %s, remoteIP: %s, sshPort: %d, webPort: %d)...", iface, gw, remoteIP, sshPort, webPort))
 		// Clean up any stale rules or leftover tun device from previous runs to ensure clean slate
-		cleanupCmds := network.BuildCleanupCommands(remoteIP, iface, gw, sshPort, 2080)
+		cleanupCmds := network.BuildCleanupCommands(remoteIP, iface, gw, sshPort, webPort)
 		_ = network.ExecuteCommands(cleanupCmds)
 
-		cmds := network.BuildRoutingCommands(remoteIP, iface, gw, sshPort, 2080)
+		cmds := network.BuildRoutingCommands(remoteIP, iface, gw, sshPort, webPort)
 		errs := network.ExecuteCommands(cmds)
 		for _, e := range errs {
 			s.addLog("warn", e.Error())
@@ -246,8 +255,12 @@ func (s *Supervisor) stopTunnelLocked() error {
 
 	// Clean up Linux network routing
 	if !s.mockMode && s.activeIface != "" && s.activeGw != "" && s.activeRemoteIP != "" {
+		webPort := s.activeWebPort
+		if webPort <= 0 {
+			webPort = 2080
+		}
 		s.addLog("info", "Tearing down Linux routing table and tun0 interface...")
-		cleanupCmds := network.BuildCleanupCommands(s.activeRemoteIP, s.activeIface, s.activeGw, s.activeSSHPort, 2080)
+		cleanupCmds := network.BuildCleanupCommands(s.activeRemoteIP, s.activeIface, s.activeGw, s.activeSSHPort, webPort)
 		_ = network.ExecuteCommands(cleanupCmds)
 	}
 
@@ -274,8 +287,11 @@ func (s *Supervisor) RollbackSafeMode() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.safeMode != nil {
-		return s.safeMode.CancelAndRollback()
+	if s.safeMode != nil && s.safeMode.IsActive() {
+		s.safeMode.Confirm() // Disarm pending timer to avoid concurrent/duplicate rollback
+		_ = s.stopTunnelLocked()
+		s.addLog("warn", "Safe mode rollback initiated by administrator")
+		return true
 	}
 	return false
 }
