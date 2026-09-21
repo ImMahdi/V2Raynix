@@ -252,12 +252,16 @@ func (r *Router) handleCreateConfig(w http.ResponseWriter, req *http.Request) {
 			item.Name = body.Name
 		}
 
-		_ = r.deps.Store.SaveConfig(item)
 		created = append(created, item)
 	}
 
 	if len(created) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no valid proxy links found"})
+		return
+	}
+
+	if err := r.deps.Store.SaveConfigsBatch(created); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to persist configurations"})
 		return
 	}
 

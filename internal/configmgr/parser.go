@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/v2raynix/v2raynix/internal/store"
@@ -290,6 +291,9 @@ func decodeBase64(s string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(clean)
 }
 
+var idCounter uint64
+
 func generateID() string {
-	return fmt.Sprintf("cfg-%d", time.Now().UnixNano())
+	cnt := atomic.AddUint64(&idCounter, 1)
+	return fmt.Sprintf("cfg-%d-%d", time.Now().UnixNano(), cnt)
 }

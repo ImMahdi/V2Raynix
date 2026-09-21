@@ -277,4 +277,74 @@ func TestStore_AutoRecoveryWhenNoBackup(t *testing.T) {
 	}
 }
 
+func TestStore_NilSafety(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "v2raynix-store-nil-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	s, err := store.New(filepath.Join(tempDir, "data.json"))
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	if err := s.SaveConfig(nil); err == nil {
+		t.Errorf("expected error when saving nil config, got nil")
+	}
+
+	if err := s.SaveConfig(&store.ConfigItem{ID: ""}); err == nil {
+		t.Errorf("expected error when saving config with empty ID, got nil")
+	}
+
+	if err := s.SaveRoutingRule(nil); err == nil {
+		t.Errorf("expected error when saving nil routing rule, got nil")
+	}
+
+	if err := s.SaveRoutingRule(&store.RoutingRule{ID: ""}); err == nil {
+		t.Errorf("expected error when saving routing rule with empty ID, got nil")
+	}
+
+	if err := s.SaveSettings(nil); err == nil {
+		t.Errorf("expected error when saving nil settings, got nil")
+	}
+}
+
+func TestStore_SaveConfigsBatch(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "v2raynix-store-batch-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	s, err := store.New(filepath.Join(tempDir, "data.json"))
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	// Empty batch should be no-op
+	if err := s.SaveConfigsBatch(nil); err != nil {
+		t.Errorf("expected nil error for empty batch, got: %v", err)
+	}
+
+	batch := []*store.ConfigItem{
+		{ID: "node-1", Name: "Node 1", Protocol: "vmess", Server: "1.1.1.1", Port: 443},
+		{ID: "node-2", Name: "Node 2", Protocol: "vless", Server: "2.2.2.2", Port: 8443},
+		{ID: "node-3", Name: "Node 3", Protocol: "trojan", Server: "3.3.3.3", Port: 443},
+	}
+
+	if err := s.SaveConfigsBatch(batch); err != nil {
+		t.Fatalf("failed to save batch: %v", err)
+	}
+
+	configs, err := s.GetConfigs()
+	if err != nil {
+		t.Fatalf("failed to get configs: %v", err)
+	}
+	if len(configs) != 3 {
+		t.Fatalf("expected 3 configs, got %d", len(configs))
+	}
+}
+
+
 
