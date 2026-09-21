@@ -16,6 +16,7 @@ import (
 var (
 	ErrInvalidToken = errors.New("invalid token")
 	ErrTokenExpired = errors.New("token expired")
+	ErrWeakSecret   = errors.New("secret key must be at least 32 bytes for HMAC-SHA256 security")
 )
 
 type Claims struct {
@@ -46,6 +47,9 @@ func CheckPassword(hashedPassword, password string) bool {
 
 // GenerateJWT creates a signed HMAC-SHA256 JWT token
 func GenerateJWT(username string, secret []byte, duration time.Duration) (string, error) {
+	if len(secret) < 32 {
+		return "", ErrWeakSecret
+	}
 	now := time.Now().Unix()
 	claims := Claims{
 		Username:  username,
@@ -80,6 +84,9 @@ func GenerateJWT(username string, secret []byte, duration time.Duration) (string
 
 // ValidateJWT validates an HMAC-SHA256 JWT token and returns its claims
 func ValidateJWT(tokenString string, secret []byte) (*Claims, error) {
+	if len(secret) < 32 {
+		return nil, ErrWeakSecret
+	}
 	parts := strings.Split(tokenString, ".")
 	if len(parts) != 3 {
 		return nil, ErrInvalidToken

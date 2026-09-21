@@ -53,7 +53,7 @@ func TestAuth_JWTTokens(t *testing.T) {
 	}
 
 	// 3. Reject token with wrong secret
-	_, err = auth.ValidateJWT(token, []byte("wrong-secret-key-1234567890"))
+	_, err = auth.ValidateJWT(token, []byte("wrong-secret-key-at-least-32-bytes-long!"))
 	if err == nil {
 		t.Errorf("expected error when validating with wrong secret")
 	}
@@ -67,5 +67,34 @@ func TestAuth_JWTTokens(t *testing.T) {
 	_, err = auth.ValidateJWT(expiredToken, secret)
 	if err == nil {
 		t.Errorf("expected error validating expired token")
+	}
+}
+
+func TestWeakSecretValidation(t *testing.T) {
+	// 1. Empty secret in GenerateJWT
+	_, err := auth.GenerateJWT("admin", []byte(""), 1*time.Hour)
+	if err != auth.ErrWeakSecret {
+		t.Errorf("expected ErrWeakSecret for empty key, got: %v", err)
+	}
+
+	// 2. Short secret (< 32 bytes) in GenerateJWT
+	_, err = auth.GenerateJWT("admin", []byte("short-secret-key-16-bytes!"), 1*time.Hour)
+	if err != auth.ErrWeakSecret {
+		t.Errorf("expected ErrWeakSecret for short key, got: %v", err)
+	}
+
+	// 3. Empty secret in ValidateJWT
+	validSecret := []byte("v2raynix-super-secret-jwt-key-256bit")
+	token, _ := auth.GenerateJWT("admin", validSecret, 1*time.Hour)
+
+	_, err = auth.ValidateJWT(token, []byte(""))
+	if err != auth.ErrWeakSecret {
+		t.Errorf("expected ErrWeakSecret for empty key in ValidateJWT, got: %v", err)
+	}
+
+	// 4. Short secret in ValidateJWT
+	_, err = auth.ValidateJWT(token, []byte("short-secret-key-16-bytes!"))
+	if err != auth.ErrWeakSecret {
+		t.Errorf("expected ErrWeakSecret for short key in ValidateJWT, got: %v", err)
 	}
 }
