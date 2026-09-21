@@ -152,6 +152,11 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	// 3. Start Xray child process
 	s.addLog("info", fmt.Sprintf("Launching Xray core on 127.0.0.1:10808 (inbound) -> %s:%d...", cfg.Server, cfg.Port))
 	xrayCmd := exec.Command("xray", "run", "-c", xrayConfigPath)
+	xrayLogPath := filepath.Join(s.dataDir, "xray.log")
+	if xLog, err := os.OpenFile(xrayLogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
+		xrayCmd.Stdout = xLog
+		xrayCmd.Stderr = xLog
+	}
 	if err := xrayCmd.Start(); err != nil {
 		s.state = "disconnected"
 		return fmt.Errorf("failed to start xray: %w", err)
@@ -164,6 +169,10 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	// 4. Setup routing commands
 	if iface != "" && gw != "" && remoteIP != "" {
 		s.addLog("info", fmt.Sprintf("Configuring Linux routing rules (iface: %s, gw: %s, remoteIP: %s, sshPort: %d)...", iface, gw, remoteIP, sshPort))
+		// Clean up any stale rules or leftover tun device from previous runs to ensure clean slate
+		cleanupCmds := network.BuildCleanupCommands(remoteIP, iface, gw, sshPort, 2080)
+		_ = network.ExecuteCommands(cleanupCmds)
+
 		cmds := network.BuildRoutingCommands(remoteIP, iface, gw, sshPort, 2080)
 		errs := network.ExecuteCommands(cmds)
 		for _, e := range errs {
@@ -174,6 +183,11 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	// 5. Start tun2socks
 	s.addLog("info", "Starting tun2socks interface tun0...")
 	tunCmd := exec.Command("tun2socks", "-device", "tun0", "-proxy", "socks5://127.0.0.1:10808")
+	tunLogPath := filepath.Join(s.dataDir, "tun2socks.log")
+	if tLog, err := os.OpenFile(tunLogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
+		tunCmd.Stdout = tLog
+		tunCmd.Stderr = tLog
+	}
 	if err := tunCmd.Start(); err != nil {
 		s.addLog("error", fmt.Sprintf("failed to start tun2socks: %v", err))
 		_ = s.stopTunnelLocked()
