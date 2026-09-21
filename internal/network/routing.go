@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -196,11 +197,42 @@ func ResolveHost(host string) (string, error) {
 	return ips[0].String(), nil
 }
 
-// ExecuteCommands runs a list of shell commands
+// Valid network interface name pattern (e.g. eth0, ens3, wlan0, tun0, bond0.100)
+var ifaceRegex = regexp.MustCompile(`^[a-zA-Z0-9_.:-]+$`)
+
+// ValidateRoutingParams validates network parameters before constructing or applying policy routing
+func ValidateRoutingParams(remoteProxyIP, defaultIface, defaultGw string, sshPort int, webPort int) error {
+	if net.ParseIP(remoteProxyIP) == nil {
+		return fmt.Errorf("invalid remote proxy IP: %q", remoteProxyIP)
+	}
+	if net.ParseIP(defaultGw) == nil {
+		return fmt.Errorf("invalid default gateway IP: %q", defaultGw)
+	}
+	if !ifaceRegex.MatchString(defaultIface) {
+		return fmt.Errorf("invalid network interface name: %q", defaultIface)
+	}
+	if sshPort <= 0 || sshPort > 65535 {
+		return fmt.Errorf("invalid SSH port: %d (must be between 1 and 65535)", sshPort)
+	}
+	if webPort <= 0 || webPort > 65535 {
+		return fmt.Errorf("invalid Web port: %d (must be between 1 and 65535)", webPort)
+	}
+	return nil
+}
+
+// ExecuteCommands runs a list of system commands directly without invoking a shell interpreter
 func ExecuteCommands(cmds []string) []error {
 	var errs []error
 	for _, cmd := range cmds {
-		c := exec.Command("sh", "-c", cmd)
+		trimmed := strings.TrimSpace(cmd)
+		if trimmed == "" {
+			continue
+		}
+		parts := strings.Fields(trimmed)
+		if len(parts) == 0 {
+			continue
+		}
+		c := exec.Command(parts[0], parts[1:]...)
 		if out, err := c.CombinedOutput(); err != nil {
 			errs = append(errs, fmt.Errorf("command '%s' failed: %v, output: %s", cmd, err, strings.TrimSpace(string(out))))
 		}
