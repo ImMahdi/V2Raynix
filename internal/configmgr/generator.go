@@ -57,6 +57,11 @@ func GenerateXrayConfig(activeConfig *store.ConfigItem, rules []*store.RoutingRu
 			"tag":      "direct",
 			"protocol": "freedom",
 			"settings": map[string]interface{}{},
+			"streamSettings": map[string]interface{}{
+				"sockopt": map[string]interface{}{
+					"mark": 81,
+				},
+			},
 		},
 		{
 			"tag":      "block",

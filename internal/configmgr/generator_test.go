@@ -125,8 +125,60 @@ func TestGenerateXrayConfig_TransportAndEncryption(t *testing.T) {
 	if tlsSettings["fingerprint"] != "chrome" {
 		t.Errorf("expected fingerprint chrome, got %v", tlsSettings["fingerprint"])
 	}
-	alpn, ok := tlsSettings["alpn"].([]interface{})
-	if !ok || len(alpn) != 2 || alpn[0] != "h2" || alpn[1] != "http/1.1" {
+	if alpn, ok := tlsSettings["alpn"].([]interface{}); !ok || len(alpn) != 2 || alpn[0] != "h2" || alpn[1] != "http/1.1" {
 		t.Errorf("expected alpn [h2, http/1.1], got %v", tlsSettings["alpn"])
+	}
+}
+
+func TestDirectOutboundMark(t *testing.T) {
+	cfg := &store.ConfigItem{
+		ID:       "cfg-test-direct",
+		Name:     "Test Direct Outbound",
+		Protocol: "vless",
+		Server:   "1.2.3.4",
+		Port:     443,
+		RawURL:   "vless://uuid-123@1.2.3.4:443?type=tcp&security=tls",
+	}
+
+	data, err := configmgr.GenerateXrayConfig(cfg, nil, 10808, 10809)
+	if err != nil {
+		t.Fatalf("GenerateXrayConfig failed: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal generated json: %v", err)
+	}
+
+	outbounds, ok := parsed["outbounds"].([]interface{})
+	if !ok || len(outbounds) < 2 {
+		t.Fatalf("expected at least 2 outbounds in config")
+	}
+
+	var directOut map[string]interface{}
+	for _, o := range outbounds {
+		outMap := o.(map[string]interface{})
+		if outMap["tag"] == "direct" {
+			directOut = outMap
+			break
+		}
+	}
+
+	if directOut == nil {
+		t.Fatalf("expected 'direct' outbound in generated config")
+	}
+
+	streamSettings, ok := directOut["streamSettings"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected streamSettings in direct outbound to prevent routing loop (CFG-01)")
+	}
+
+	sockopt, ok := streamSettings["sockopt"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sockopt in direct streamSettings")
+	}
+
+	if mark, ok := sockopt["mark"].(float64); !ok || int(mark) != 81 {
+		t.Errorf("expected sockopt.mark == 81 on direct outbound, got %v", sockopt["mark"])
 	}
 }
