@@ -148,19 +148,28 @@ func buildProxyOutbound(cfg *store.ConfigItem) (map[string]interface{}, error) {
 			netType = "tcp"
 		}
 
+		sec := q.Get("security")
 		streamSettings := map[string]interface{}{
 			"network":  netType,
-			"security": q.Get("security"),
+			"security": sec,
 		}
 
-		if q.Get("security") == "reality" {
+		if sec == "reality" {
+			pbk := q.Get("pbk")
+			if pbk == "" {
+				return nil, fmt.Errorf("vless reality requires a non-empty public key (pbk)")
+			}
+			sni := q.Get("sni")
+			if sni == "" {
+				return nil, fmt.Errorf("vless reality requires serverName (sni)")
+			}
 			streamSettings["realitySettings"] = map[string]interface{}{
-				"serverName":  q.Get("sni"),
-				"publicKey":   q.Get("pbk"),
+				"serverName":  sni,
+				"publicKey":   pbk,
 				"shortId":     q.Get("sid"),
 				"fingerprint": q.Get("fp"),
 			}
-		} else if q.Get("security") == "tls" {
+		} else if sec == "tls" {
 			tlsMap := map[string]interface{}{
 				"serverName": q.Get("sni"),
 			}
@@ -171,6 +180,13 @@ func buildProxyOutbound(cfg *store.ConfigItem) (map[string]interface{}, error) {
 				tlsMap["alpn"] = strings.Split(alpn, ",")
 			}
 			streamSettings["tlsSettings"] = tlsMap
+		}
+
+		flow := q.Get("flow")
+		if flow == "xtls-rprx-vision" {
+			if netType != "tcp" || (sec != "reality" && sec != "tls") {
+				return nil, fmt.Errorf("xtls-rprx-vision is only supported with TCP transport and TLS or Reality security")
+			}
 		}
 
 		if netType == "xhttp" || netType == "splithttp" {
