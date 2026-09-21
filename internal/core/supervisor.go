@@ -194,7 +194,7 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 
 	// 5. Start tun2socks
 	s.addLog("info", "Starting tun2socks interface tun0...")
-	tunCmd := exec.Command("tun2socks", "-device", "tun0", "-proxy", "socks5://127.0.0.1:10808")
+	tunCmd := exec.Command("tun2socks", "-d", "tun0", "-p", "socks5://127.0.0.1:10808")
 	tunLogPath := filepath.Join(s.dataDir, "tun2socks.log")
 	if tLog, err := os.OpenFile(tunLogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
 		tunCmd.Stdout = tLog

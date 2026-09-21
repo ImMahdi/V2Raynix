@@ -79,8 +79,8 @@ func BuildCleanupCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 		fmt.Sprintf("ip rule del sport %d table main", sshPort),
 		fmt.Sprintf("ip rule del dport %d table main", sshPort),
 		fmt.Sprintf("ip rule del sport %d table main", webPort),
-		fmt.Sprintf("ip rule del dport %d table main", webPort),
-		fmt.Sprintf("ip rule del to %s table main", remoteProxyIP),
+		fmt.Sprintf("ip rule del to %s table main priority 999", remoteProxyIP),
+		"ip rule del priority 999",
 
 		// Flush custom table
 		fmt.Sprintf("ip route flush table %d", TableID),
