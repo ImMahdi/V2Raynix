@@ -255,6 +255,39 @@ func buildProxyOutbound(cfg *store.ConfigItem) (map[string]interface{}, error) {
 		}
 		if vmess.TLS == "tls" {
 			streamSettings["security"] = "tls"
+			tlsMap := map[string]interface{}{}
+			if vmess.Sni != "" {
+				tlsMap["serverName"] = vmess.Sni
+			} else if vmess.Host != "" {
+				tlsMap["serverName"] = vmess.Host
+			}
+			streamSettings["tlsSettings"] = tlsMap
+		}
+
+		if network == "ws" {
+			wsMap := map[string]interface{}{}
+			if vmess.Path != "" {
+				wsMap["path"] = vmess.Path
+			}
+			if vmess.Host != "" {
+				wsMap["headers"] = map[string]string{"Host": vmess.Host}
+			}
+			streamSettings["wsSettings"] = wsMap
+		} else if network == "grpc" {
+			grpcMap := map[string]interface{}{}
+			if vmess.Path != "" {
+				grpcMap["serviceName"] = vmess.Path
+			}
+			streamSettings["grpcSettings"] = grpcMap
+		} else if network == "h2" || network == "http" {
+			httpMap := map[string]interface{}{}
+			if vmess.Path != "" {
+				httpMap["path"] = vmess.Path
+			}
+			if vmess.Host != "" {
+				httpMap["host"] = strings.Split(vmess.Host, ",")
+			}
+			streamSettings["httpSettings"] = httpMap
 		}
 		outbound["streamSettings"] = streamSettings
 
