@@ -113,6 +113,18 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	}
 
 	// Real Linux orchestration:
+	// Kill previous child processes if running to prevent port or tun0 contention
+	if s.tun2socksCmd != nil && s.tun2socksCmd.Process != nil {
+		_ = s.tun2socksCmd.Process.Kill()
+		_ = s.tun2socksCmd.Wait()
+		s.tun2socksCmd = nil
+	}
+	if s.xrayCmd != nil && s.xrayCmd.Process != nil {
+		_ = s.xrayCmd.Process.Kill()
+		_ = s.xrayCmd.Wait()
+		s.xrayCmd = nil
+	}
+
 	rules, err := s.store.GetRoutingRules()
 	if err != nil {
 		s.state = "disconnected"

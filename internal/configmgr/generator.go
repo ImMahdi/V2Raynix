@@ -120,34 +120,80 @@ func buildProxyOutbound(cfg *store.ConfigItem) (map[string]interface{}, error) {
 		q := u.Query()
 		uuid := u.User.Username()
 
+		enc := q.Get("encryption")
+		if enc == "" {
+			enc = "none"
+		}
+
 		vnext := map[string]interface{}{
 			"address": cfg.Server,
 			"port":    cfg.Port,
 			"users": []map[string]interface{}{
 				{
 					"id":         uuid,
-					"encryption": "none",
+					"encryption": enc,
 					"flow":       q.Get("flow"),
 				},
 			},
 		}
 
+		netType := q.Get("type")
+		if netType == "" {
+			netType = "tcp"
+		}
+
 		streamSettings := map[string]interface{}{
-			"network":  q.Get("type"),
+			"network":  netType,
 			"security": q.Get("security"),
 		}
 
 		if q.Get("security") == "reality" {
 			streamSettings["realitySettings"] = map[string]interface{}{
-				"serverName": q.Get("sni"),
-				"publicKey":  q.Get("pbk"),
-				"shortId":    q.Get("sid"),
+				"serverName":  q.Get("sni"),
+				"publicKey":   q.Get("pbk"),
+				"shortId":     q.Get("sid"),
 				"fingerprint": q.Get("fp"),
 			}
 		} else if q.Get("security") == "tls" {
-			streamSettings["tlsSettings"] = map[string]interface{}{
+			tlsMap := map[string]interface{}{
 				"serverName": q.Get("sni"),
 			}
+			if fp := q.Get("fp"); fp != "" {
+				tlsMap["fingerprint"] = fp
+			}
+			if alpn := q.Get("alpn"); alpn != "" {
+				tlsMap["alpn"] = strings.Split(alpn, ",")
+			}
+			streamSettings["tlsSettings"] = tlsMap
+		}
+
+		if netType == "xhttp" || netType == "splithttp" {
+			xhttpMap := map[string]interface{}{}
+			if p := q.Get("path"); p != "" {
+				xhttpMap["path"] = p
+			}
+			if h := q.Get("host"); h != "" {
+				xhttpMap["host"] = h
+			}
+			if m := q.Get("mode"); m != "" {
+				xhttpMap["mode"] = m
+			}
+			streamSettings["xhttpSettings"] = xhttpMap
+		} else if netType == "ws" {
+			wsMap := map[string]interface{}{}
+			if p := q.Get("path"); p != "" {
+				wsMap["path"] = p
+			}
+			if h := q.Get("host"); h != "" {
+				wsMap["headers"] = map[string]string{"Host": h}
+			}
+			streamSettings["wsSettings"] = wsMap
+		} else if netType == "grpc" {
+			grpcMap := map[string]interface{}{}
+			if sName := q.Get("serviceName"); sName != "" {
+				grpcMap["serviceName"] = sName
+			}
+			streamSettings["grpcSettings"] = grpcMap
 		}
 
 		outbound["settings"] = map[string]interface{}{
