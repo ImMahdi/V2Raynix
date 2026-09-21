@@ -251,4 +251,90 @@ func TestGenerateXrayConfig_ShadowsocksLegacy(t *testing.T) {
 	}
 }
 
+func TestGenerateXrayConfig_VMessCamouflage(t *testing.T) {
+	// 1. VMess WebSocket + TLS + custom Path & Host & SNI
+	b64WS := "eyJ2IjoiMiIsInBzIjoid3Mtbm9kZSIsImFkZCI6IjEuMi4zLjQiLCJwb3J0IjoiNDQzIiwiaWQiOiI5NmM0ZDdiMi01MjBlLTRiNjktOGNlMi00ZTBkNGM4MmI5NTIiLCJhaWQiOiIwIiwibmV0Ijoid3MiLCJwYXRoIjoiL215LXdzLXBhdGgiLCJob3N0IjoiY2RuLmV4YW1wbGUuY29tIiwidGxzIjoidGxzIiwic25pIjoic25pLmV4YW1wbGUuY29tIn0="
+	cfgWS := &store.ConfigItem{
+		ID:       "cfg-vmess-ws",
+		Name:     "VMess WS",
+		Protocol: "vmess",
+		Server:   "1.2.3.4",
+		Port:     443,
+		RawURL:   "vmess://" + b64WS,
+	}
+
+	dataWS, err := configmgr.GenerateXrayConfig(cfgWS, nil, 10808, 10809)
+	if err != nil {
+		t.Fatalf("GenerateXrayConfig failed: %v", err)
+	}
+
+	var parsedWS map[string]interface{}
+	if err := json.Unmarshal(dataWS, &parsedWS); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	outboundsWS := parsedWS["outbounds"].([]interface{})
+	proxyOutWS := outboundsWS[0].(map[string]interface{})
+	streamWS := proxyOutWS["streamSettings"].(map[string]interface{})
+
+	// Check security and tlsSettings
+	if streamWS["security"] != "tls" {
+		t.Errorf("expected security tls, got %v", streamWS["security"])
+	}
+	tlsSettings, ok := streamWS["tlsSettings"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected tlsSettings in streamSettings")
+	}
+	if tlsSettings["serverName"] != "sni.example.com" {
+		t.Errorf("expected serverName sni.example.com, got %v", tlsSettings["serverName"])
+	}
+
+	// Check wsSettings
+	wsSettings, ok := streamWS["wsSettings"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected wsSettings in streamSettings")
+	}
+	if wsSettings["path"] != "/my-ws-path" {
+		t.Errorf("expected path /my-ws-path, got %v", wsSettings["path"])
+	}
+	headers, ok := wsSettings["headers"].(map[string]interface{})
+	if !ok || headers["Host"] != "cdn.example.com" {
+		t.Errorf("expected Host header cdn.example.com, got %v", headers["Host"])
+	}
+
+	// 2. VMess gRPC + serviceName
+	b64GRPC := "eyJ2IjoiMiIsInBzIjoiZ3JwYy1ub2RlIiwiYWRkIjoiMS4yLjMuNCIsInBvcnQiOiI0NDMiLCJpZCI6Ijk2YzRkN2IyLTUyMGUtNGI2OS04Y2UyLTRlMGQ0YzgyYjk1MiIsImFpZCI6IjAiLCJuZXQiOiJncnBjIiwicGF0aCI6Im15LWdycGMtc2VydmljZSIsInRscyI6IiJ9"
+	cfgGRPC := &store.ConfigItem{
+		ID:       "cfg-vmess-grpc",
+		Name:     "VMess gRPC",
+		Protocol: "vmess",
+		Server:   "1.2.3.4",
+		Port:     443,
+		RawURL:   "vmess://" + b64GRPC,
+	}
+
+	dataGRPC, err := configmgr.GenerateXrayConfig(cfgGRPC, nil, 10808, 10809)
+	if err != nil {
+		t.Fatalf("GenerateXrayConfig failed: %v", err)
+	}
+
+	var parsedGRPC map[string]interface{}
+	if err := json.Unmarshal(dataGRPC, &parsedGRPC); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	outboundsGRPC := parsedGRPC["outbounds"].([]interface{})
+	proxyOutGRPC := outboundsGRPC[0].(map[string]interface{})
+	streamGRPC := proxyOutGRPC["streamSettings"].(map[string]interface{})
+
+	grpcSettings, ok := streamGRPC["grpcSettings"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected grpcSettings in streamSettings")
+	}
+	if grpcSettings["serviceName"] != "my-grpc-service" {
+		t.Errorf("expected serviceName my-grpc-service, got %v", grpcSettings["serviceName"])
+	}
+}
+
+
 
