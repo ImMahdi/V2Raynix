@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -192,8 +193,12 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	s.xrayCmd = xrayCmd
 	s.watchProcess(xrayCmd, "xray")
 
-	// Give Xray 200ms to initialize
-	time.Sleep(200 * time.Millisecond)
+	// Wait for Xray inbound port to be ready (up to 2 seconds)
+	if !waitForPortReady("127.0.0.1:10808", 2*time.Second) {
+		s.addLog("warn", "Xray port 127.0.0.1:10808 did not become ready within 2s, proceeding with routing setup...")
+	} else {
+		s.addLog("info", "Xray inbound port 127.0.0.1:10808 is ready and accepting connections")
+	}
 
 	// 4. Setup routing commands
 	if iface != "" && gw != "" && remoteIP != "" {
@@ -422,4 +427,17 @@ func (s *Supervisor) GetLogs(limit int) []LogEntry {
 	out := make([]LogEntry, limit)
 	copy(out, s.logs[start:])
 	return out
+}
+
+func waitForPortReady(addr string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 50*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return true
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return false
 }
