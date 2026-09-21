@@ -336,5 +336,64 @@ func TestGenerateXrayConfig_VMessCamouflage(t *testing.T) {
 	}
 }
 
+func TestGenerateXrayConfig_RealityAndVisionValidation(t *testing.T) {
+	// 1. Reality without pbk
+	cfgNoPbk := &store.ConfigItem{
+		ID:       "cfg-no-pbk",
+		Name:     "No PBK",
+		Protocol: "vless",
+		Server:   "1.2.3.4",
+		Port:     443,
+		RawURL:   "vless://uuid-1@1.2.3.4:443?type=tcp&security=reality&sni=example.com",
+	}
+	_, err := configmgr.GenerateXrayConfig(cfgNoPbk, nil, 10808, 10809)
+	if err == nil {
+		t.Errorf("expected error for VLESS Reality without pbk, got nil")
+	}
+
+	// 2. Reality without sni
+	cfgNoSni := &store.ConfigItem{
+		ID:       "cfg-no-sni",
+		Name:     "No SNI",
+		Protocol: "vless",
+		Server:   "1.2.3.4",
+		Port:     443,
+		RawURL:   "vless://uuid-1@1.2.3.4:443?type=tcp&security=reality&pbk=key123",
+	}
+	_, err = configmgr.GenerateXrayConfig(cfgNoSni, nil, 10808, 10809)
+	if err == nil {
+		t.Errorf("expected error for VLESS Reality without sni, got nil")
+	}
+
+	// 3. Vision flow over WebSocket (incompatible)
+	cfgVisionWS := &store.ConfigItem{
+		ID:       "cfg-vision-ws",
+		Name:     "Vision WS",
+		Protocol: "vless",
+		Server:   "1.2.3.4",
+		Port:     443,
+		RawURL:   "vless://uuid-1@1.2.3.4:443?type=ws&security=tls&sni=example.com&flow=xtls-rprx-vision",
+	}
+	_, err = configmgr.GenerateXrayConfig(cfgVisionWS, nil, 10808, 10809)
+	if err == nil {
+		t.Errorf("expected error for xtls-rprx-vision over WebSocket transport, got nil")
+	}
+
+	// 4. Vision flow without TLS or Reality (incompatible)
+	cfgVisionNoSec := &store.ConfigItem{
+		ID:       "cfg-vision-nosec",
+		Name:     "Vision None",
+		Protocol: "vless",
+		Server:   "1.2.3.4",
+		Port:     443,
+		RawURL:   "vless://uuid-1@1.2.3.4:443?type=tcp&security=none&flow=xtls-rprx-vision",
+	}
+	_, err = configmgr.GenerateXrayConfig(cfgVisionNoSec, nil, 10808, 10809)
+	if err == nil {
+		t.Errorf("expected error for xtls-rprx-vision without TLS/Reality security, got nil")
+	}
+}
+
+
 
 
