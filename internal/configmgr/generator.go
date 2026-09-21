@@ -74,23 +74,44 @@ func GenerateXrayConfig(activeConfig *store.ConfigItem, rules []*store.RoutingRu
 	// Build routing rules
 	var xRoutingRules []map[string]interface{}
 	for _, r := range rules {
-		if !r.IsEnabled {
+		if r == nil || !r.IsEnabled {
+			continue
+		}
+
+		action := strings.ToLower(strings.TrimSpace(r.Action))
+		if action != "direct" && action != "proxy" && action != "block" {
+			continue
+		}
+
+		target := strings.TrimSpace(r.Target)
+		if target == "" {
 			continue
 		}
 
 		ruleMap := map[string]interface{}{
 			"type":        "field",
-			"outboundTag": r.Action, // "direct", "proxy", "block"
+			"outboundTag": action,
 		}
 
-		if r.Action == "proxy" {
-			ruleMap["outboundTag"] = "proxy"
-		}
-
-		if r.TargetType == "domain" {
-			ruleMap["domain"] = []string{r.Target}
-		} else if r.TargetType == "ip" {
-			ruleMap["ip"] = []string{r.Target}
+		targetType := strings.ToLower(strings.TrimSpace(r.TargetType))
+		switch targetType {
+		case "domain":
+			ruleMap["domain"] = []string{target}
+		case "ip":
+			ruleMap["ip"] = []string{target}
+		case "preset":
+			if strings.HasPrefix(target, "geoip:") {
+				ruleMap["ip"] = []string{target}
+			} else {
+				ruleMap["domain"] = []string{target}
+			}
+		default:
+			// Auto-detect based on prefix or content
+			if strings.HasPrefix(target, "geoip:") {
+				ruleMap["ip"] = []string{target}
+			} else {
+				ruleMap["domain"] = []string{target}
+			}
 		}
 
 		xRoutingRules = append(xRoutingRules, ruleMap)
