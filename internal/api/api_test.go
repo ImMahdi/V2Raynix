@@ -150,6 +150,59 @@ func TestAPI_ConfigOperations(t *testing.T) {
 	}
 }
 
+func TestAPI_BatchConfigImport(t *testing.T) {
+	router, tempDir := setupTestRouter(t)
+	defer os.RemoveAll(tempDir)
+
+	// Login
+	loginBody, _ := json.Marshal(map[string]string{
+		"username": "admin",
+		"password": "admin123",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var loginResp map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &loginResp)
+	token := loginResp["token"].(string)
+
+	// Post multi-line batch configs
+	batchContent := "vless://96c4d7b2-520e-4b69-8ce2-4e0d4c82b952@1.1.1.1:443?security=none#Node1\n" +
+		"vless://96c4d7b2-520e-4b69-8ce2-4e0d4c82b952@2.2.2.2:443?security=none#Node2\n" +
+		"vless://96c4d7b2-520e-4b69-8ce2-4e0d4c82b952@3.3.3.3:443?security=none#Node3"
+
+	createBody, _ := json.Marshal(map[string]string{
+		"content": batchContent,
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/configs", bytes.NewReader(createBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created for batch import, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var created []map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	if len(created) != 3 {
+		t.Fatalf("expected 3 created configs, got %d", len(created))
+	}
+
+	// Verify all 3 in store
+	req = httptest.NewRequest(http.MethodGet, "/api/configs", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var all []map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &all)
+	if len(all) != 3 {
+		t.Fatalf("expected 3 total configs in store, got %d", len(all))
+	}
+}
+
 func TestAPI_TunnelEndpoints(t *testing.T) {
 	router, tempDir := setupTestRouter(t)
 	defer os.RemoveAll(tempDir)

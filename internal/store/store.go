@@ -19,6 +19,7 @@ type Store interface {
 	GetConfigs() ([]*ConfigItem, error)
 	GetConfigByID(id string) (*ConfigItem, error)
 	SaveConfig(cfg *ConfigItem) error
+	SaveConfigsBatch(configs []*ConfigItem) error
 	DeleteConfig(id string) error
 	SetActiveConfig(id string) error
 	GetActiveConfig() (*ConfigItem, error)
@@ -237,11 +238,36 @@ func (fs *FileStore) GetConfigByID(id string) (*ConfigItem, error) {
 }
 
 func (fs *FileStore) SaveConfig(cfg *ConfigItem) error {
+	if cfg == nil {
+		return errors.New("nil config cannot be saved")
+	}
+	if cfg.ID == "" {
+		return errors.New("empty config id")
+	}
+
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
 	itemCopy := *cfg
 	fs.data.Configs[cfg.ID] = &itemCopy
+	return fs.persist()
+}
+
+func (fs *FileStore) SaveConfigsBatch(configs []*ConfigItem) error {
+	if len(configs) == 0 {
+		return nil
+	}
+
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	for _, cfg := range configs {
+		if cfg == nil || cfg.ID == "" {
+			continue
+		}
+		itemCopy := *cfg
+		fs.data.Configs[cfg.ID] = &itemCopy
+	}
 	return fs.persist()
 }
 
@@ -314,6 +340,13 @@ func (fs *FileStore) GetRoutingRules() ([]*RoutingRule, error) {
 }
 
 func (fs *FileStore) SaveRoutingRule(rule *RoutingRule) error {
+	if rule == nil {
+		return errors.New("nil routing rule cannot be saved")
+	}
+	if rule.ID == "" {
+		return errors.New("empty routing rule id")
+	}
+
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
@@ -363,6 +396,10 @@ func (fs *FileStore) GetSettings() (*SystemSettings, error) {
 }
 
 func (fs *FileStore) SaveSettings(settings *SystemSettings) error {
+	if settings == nil {
+		return errors.New("nil settings cannot be saved")
+	}
+
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 
