@@ -57,6 +57,8 @@ type Supervisor struct {
 
 	xrayCmd      *exec.Cmd
 	tun2socksCmd *exec.Cmd
+	xrayLogFile  *os.File
+	tunLogFile   *os.File
 
 	logs   []LogEntry
 	logsMu sync.RWMutex
@@ -125,6 +127,14 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 		_ = s.xrayCmd.Wait()
 		s.xrayCmd = nil
 	}
+	if s.xrayLogFile != nil {
+		_ = s.xrayLogFile.Close()
+		s.xrayLogFile = nil
+	}
+	if s.tunLogFile != nil {
+		_ = s.tunLogFile.Close()
+		s.tunLogFile = nil
+	}
 
 	rules, err := s.store.GetRoutingRules()
 	if err != nil {
@@ -167,10 +177,15 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	xrayCmd := exec.Command("xray", "run", "-c", xrayConfigPath)
 	xrayLogPath := filepath.Join(s.dataDir, "xray.log")
 	if xLog, err := os.OpenFile(xrayLogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
+		s.xrayLogFile = xLog
 		xrayCmd.Stdout = xLog
 		xrayCmd.Stderr = xLog
 	}
 	if err := xrayCmd.Start(); err != nil {
+		if s.xrayLogFile != nil {
+			_ = s.xrayLogFile.Close()
+			s.xrayLogFile = nil
+		}
 		s.state = "disconnected"
 		return fmt.Errorf("failed to start xray: %w", err)
 	}
@@ -207,6 +222,7 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	tunCmd := exec.Command("tun2socks", "-d", "tun0", "-p", "socks5://127.0.0.1:10808")
 	tunLogPath := filepath.Join(s.dataDir, "tun2socks.log")
 	if tLog, err := os.OpenFile(tunLogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
+		s.tunLogFile = tLog
 		tunCmd.Stdout = tLog
 		tunCmd.Stderr = tLog
 	}
@@ -230,6 +246,14 @@ func (s *Supervisor) watchProcess(cmd *exec.Cmd, name string) {
 
 		s.mu.Lock()
 		defer s.mu.Unlock()
+
+		if name == "xray" && s.xrayLogFile != nil {
+			_ = s.xrayLogFile.Close()
+			s.xrayLogFile = nil
+		} else if name == "tun2socks" && s.tunLogFile != nil {
+			_ = s.tunLogFile.Close()
+			s.tunLogFile = nil
+		}
 
 		// If we are still in "connected" state, this exit was unexpected (crash or kill).
 		// Emergency teardown is required to avoid an unreachable blackhole routing state.
@@ -269,6 +293,14 @@ func (s *Supervisor) stopTunnelLocked() error {
 	if s.xrayCmd != nil && s.xrayCmd.Process != nil {
 		_ = s.xrayCmd.Process.Kill()
 		s.xrayCmd = nil
+	}
+	if s.xrayLogFile != nil {
+		_ = s.xrayLogFile.Close()
+		s.xrayLogFile = nil
+	}
+	if s.tunLogFile != nil {
+		_ = s.tunLogFile.Close()
+		s.tunLogFile = nil
 	}
 
 	// Clean up Linux network routing
