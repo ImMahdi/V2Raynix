@@ -396,6 +396,23 @@ func (r *Router) handleCreateRoutingRule(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	rule.Target = strings.TrimSpace(rule.Target)
+	if rule.Target == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "target cannot be empty"})
+		return
+	}
+
+	rule.Action = strings.ToLower(strings.TrimSpace(rule.Action))
+	if rule.Action != "direct" && rule.Action != "proxy" && rule.Action != "block" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "action must be direct, proxy, or block"})
+		return
+	}
+
+	rule.TargetType = strings.ToLower(strings.TrimSpace(rule.TargetType))
+	if rule.TargetType != "domain" && rule.TargetType != "ip" && rule.TargetType != "preset" {
+		rule.TargetType = "ip"
+	}
+
 	if rule.ID == "" {
 		rule.ID = "rule-" + time.Now().Format("20060102150405")
 	}
