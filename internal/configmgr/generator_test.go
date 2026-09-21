@@ -216,3 +216,39 @@ func TestGenerateXrayConfig_VMessAlterID(t *testing.T) {
 	}
 }
 
+func TestGenerateXrayConfig_ShadowsocksLegacy(t *testing.T) {
+	// ss://base64(method:password@host:port)#LegacyNode
+	// bf-cfb:test@198.51.100.4:8888 -> base64: YmYtY2ZiOnRlc3RAMTk4LjUxLjEwMC40Ojg4ODg=
+	cfg := &store.ConfigItem{
+		ID:       "cfg-ss-legacy",
+		Name:     "Legacy SS",
+		Protocol: "shadowsocks",
+		Server:   "198.51.100.4",
+		Port:     8888,
+		RawURL:   "ss://YmYtY2ZiOnRlc3RAMTk4LjUxLjEwMC40Ojg4ODg=#LegacyNode",
+	}
+
+	data, err := configmgr.GenerateXrayConfig(cfg, nil, 10808, 10809)
+	if err != nil {
+		t.Fatalf("GenerateXrayConfig failed: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	outbounds := parsed["outbounds"].([]interface{})
+	proxyOut := outbounds[0].(map[string]interface{})
+	settings := proxyOut["settings"].(map[string]interface{})
+	servers := settings["servers"].([]interface{})[0].(map[string]interface{})
+
+	if servers["method"] != "bf-cfb" {
+		t.Errorf("expected method 'bf-cfb', got '%v'", servers["method"])
+	}
+	if servers["password"] != "test" {
+		t.Errorf("expected password 'test', got '%v'", servers["password"])
+	}
+}
+
+
