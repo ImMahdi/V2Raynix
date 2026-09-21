@@ -28,11 +28,12 @@ func BuildRoutingCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 
 	cmds := []string{
 		// 1. Create and configure tun interface
-		fmt.Sprintf("ip link add dev %s type tun", TunDevice),
+		fmt.Sprintf("ip tuntap add dev %s mode tun", TunDevice),
 		fmt.Sprintf("ip addr add %s dev %s", TunIP, TunDevice),
 		fmt.Sprintf("ip link set dev %s up", TunDevice),
 
-		// 2. Anti-lockout bypass for remote proxy server IP (prevent routing loop)
+		// 2. Anti-lockout bypass for remote proxy server IP (priority 999 rule + direct route)
+		fmt.Sprintf("ip rule add to %s table main priority 999", remoteProxyIP),
 		fmt.Sprintf("ip route add %s/32 via %s dev %s", remoteProxyIP, defaultGw, defaultIface),
 
 		// 3. Anti-lockout policy rules for SSH
@@ -71,10 +72,15 @@ func BuildCleanupCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 	cmds := []string{
 		// Remove policy rules
 		fmt.Sprintf("ip rule del not fwmark %s table %d priority 2000", FwmarkValue, TableID),
+		"ip rule del to 10.0.0.0/8 table main",
+		"ip rule del to 172.16.0.0/12 table main",
+		"ip rule del to 192.168.0.0/16 table main",
+		"ip rule del to 127.0.0.0/8 table main",
 		fmt.Sprintf("ip rule del sport %d table main", sshPort),
 		fmt.Sprintf("ip rule del dport %d table main", sshPort),
 		fmt.Sprintf("ip rule del sport %d table main", webPort),
 		fmt.Sprintf("ip rule del dport %d table main", webPort),
+		fmt.Sprintf("ip rule del to %s table main", remoteProxyIP),
 
 		// Flush custom table
 		fmt.Sprintf("ip route flush table %d", TableID),
@@ -83,7 +89,7 @@ func BuildCleanupCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 		fmt.Sprintf("ip route del %s/32 via %s dev %s", remoteProxyIP, defaultGw, defaultIface),
 
 		// Delete tun interface
-		fmt.Sprintf("ip link del %s", TunDevice),
+		fmt.Sprintf("ip tuntap del dev %s mode tun", TunDevice),
 	}
 
 	return cmds
