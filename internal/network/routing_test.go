@@ -106,3 +106,39 @@ func TestBuildCleanupCommands(t *testing.T) {
 		t.Errorf("expected deletion of fwmark 0x52 rule in cleanup")
 	}
 }
+
+func TestValidateRoutingParams(t *testing.T) {
+	// Valid parameters
+	err := network.ValidateRoutingParams("198.51.100.1", "eth0", "192.168.1.1", 22, 2080)
+	if err != nil {
+		t.Fatalf("expected valid parameters to pass, got: %v", err)
+	}
+
+	// Invalid remote IP (containing shell metacharacters)
+	err = network.ValidateRoutingParams("198.51.100.1; rm -rf /", "eth0", "192.168.1.1", 22, 2080)
+	if err == nil {
+		t.Errorf("expected error for injected remote IP, got nil")
+	}
+
+	// Invalid gateway
+	err = network.ValidateRoutingParams("198.51.100.1", "eth0", "invalid-gw", 22, 2080)
+	if err == nil {
+		t.Errorf("expected error for invalid gateway, got nil")
+	}
+
+	// Invalid interface (containing shell metacharacters)
+	err = network.ValidateRoutingParams("198.51.100.1", "eth0; echo pwned", "192.168.1.1", 22, 2080)
+	if err == nil {
+		t.Errorf("expected error for injected interface name, got nil")
+	}
+
+	// Invalid ports
+	err = network.ValidateRoutingParams("198.51.100.1", "eth0", "192.168.1.1", 0, 2080)
+	if err == nil {
+		t.Errorf("expected error for port 0, got nil")
+	}
+	err = network.ValidateRoutingParams("198.51.100.1", "eth0", "192.168.1.1", 22, 70000)
+	if err == nil {
+		t.Errorf("expected error for port > 65535, got nil")
+	}
+}
