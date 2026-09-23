@@ -155,3 +155,45 @@ func TestPinger_WorkerPoolBound(t *testing.T) {
 		t.Fatalf("worker pool unbounded: spawned %d goroutines, expected at most %d", spawned, concurrency)
 	}
 }
+
+func TestPinger_RealHTTPDelay(t *testing.T) {
+	// 1. Failure when socks5 proxy is not running
+	_, err := pinger.RealHTTPDelay("127.0.0.1:59993", "http://127.0.0.1:59992", 100*time.Millisecond)
+	if err == nil {
+		t.Errorf("expected error when socks proxy is down")
+	}
+}
+
+func TestPinger_BatchRealTestContext(t *testing.T) {
+	configs := []*store.ConfigItem{
+		{
+			ID:       "cfg-dead-1",
+			Name:     "Dead Server",
+			Protocol: "vless",
+			Server:   "127.0.0.1",
+			Port:     59991,
+		},
+		{
+			ID:       "cfg-dead-2",
+			Name:     "Fake CDN Server",
+			Protocol: "vless",
+			Server:   "127.0.0.1",
+			Port:     59990,
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	results := pinger.BatchRealTestContext(ctx, configs, 2, 200*time.Millisecond)
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results["cfg-dead-1"] != -1 {
+		t.Errorf("expected -1 for dead server, got %d", results["cfg-dead-1"])
+	}
+	if results["cfg-dead-2"] != -1 {
+		t.Errorf("expected -1 for fake server, got %d", results["cfg-dead-2"])
+	}
+}
+
