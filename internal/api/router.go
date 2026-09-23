@@ -73,6 +73,8 @@ func (r *Router) registerRoutes() {
 	r.mux.HandleFunc("DELETE /api/configs/{id}", r.requireAuth(r.handleDeleteConfig))
 	r.mux.HandleFunc("POST /api/configs/{id}/activate", r.requireAuth(r.handleActivateConfig))
 	r.mux.HandleFunc("POST /api/configs/ping-all", r.requireAuth(r.handlePingAll))
+	r.mux.HandleFunc("POST /api/configs/{id}/test", r.requireAuth(r.handleTestConfig))
+	r.mux.HandleFunc("POST /api/configs/test-all", r.requireAuth(r.handleTestAll))
 
 	// Tunnel & Safe Mode
 	r.mux.HandleFunc("GET /api/tunnel/status", r.requireAuth(r.handleTunnelStatus))
@@ -328,6 +330,38 @@ func (r *Router) handlePingAll(w http.ResponseWriter, req *http.Request) {
 	}
 
 	results := pinger.BatchPingContext(req.Context(), configs, 5, 2*time.Second)
+	for id, lat := range results {
+		_ = r.deps.Store.UpdateLatency(id, lat)
+	}
+
+	writeJSON(w, http.StatusOK, results)
+}
+
+func (r *Router) handleTestConfig(w http.ResponseWriter, req *http.Request) {
+	id := req.PathValue("id")
+	cfg, err := r.deps.Store.GetConfigByID(id)
+	if err != nil || cfg == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "config not found"})
+		return
+	}
+
+	lat, _ := pinger.TestConfigRealDelay(req.Context(), cfg, 3*time.Second)
+	_ = r.deps.Store.UpdateLatency(id, lat)
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"id":        id,
+		"latencyMs": lat,
+	})
+}
+
+func (r *Router) handleTestAll(w http.ResponseWriter, req *http.Request) {
+	configs, err := r.deps.Store.GetConfigs()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	results := pinger.BatchRealTestContext(req.Context(), configs, 5, 3*time.Second)
 	for id, lat := range results {
 		_ = r.deps.Store.UpdateLatency(id, lat)
 	}

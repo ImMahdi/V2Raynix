@@ -408,3 +408,78 @@ func TestAPI_LoginRateLimiting(t *testing.T) {
 	}
 }
 
+func TestAPI_ConfigTestEndpoints(t *testing.T) {
+	router, tempDir := setupTestRouter(t)
+	defer os.RemoveAll(tempDir)
+
+	// Login to get token
+	loginBody, _ := json.Marshal(map[string]string{
+		"username": "admin",
+		"password": "admin123",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login failed: %d", rec.Code)
+	}
+
+	var authResp map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &authResp)
+	token := authResp["token"]
+
+	// Create a test config
+	createBody, _ := json.Marshal(map[string]string{
+		"content": "vless://96c4d7b2-520e-4b69-8ce2-4e0d4c82b952@127.0.0.1:59990?type=tcp#TestNode",
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/configs", bytes.NewReader(createBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("failed to create config: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var created store.ConfigItem
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	configID := created.ID
+
+	// 1. Single config test -> 200 OK
+	req = httptest.NewRequest(http.MethodPost, "/api/configs/"+configID+"/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for single test, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var singleRes map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &singleRes)
+	if singleRes["id"] != configID {
+		t.Errorf("expected id %s, got %v", configID, singleRes["id"])
+	}
+
+	// 2. Single config test with non-existent ID -> 404 Not Found
+	req = httptest.NewRequest(http.MethodPost, "/api/configs/non-existent-id/test", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for non-existent config, got %d", rec.Code)
+	}
+
+	// 3. Batch test-all -> 200 OK
+	req = httptest.NewRequest(http.MethodPost, "/api/configs/test-all", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for test-all, got %d", rec.Code)
+	}
+	var batchRes map[string]int
+	_ = json.Unmarshal(rec.Body.Bytes(), &batchRes)
+	if _, ok := batchRes[configID]; !ok {
+		t.Errorf("expected configID %s in batch results", configID)
+	}
+}
+
+
