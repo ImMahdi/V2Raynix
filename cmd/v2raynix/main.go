@@ -58,12 +58,8 @@ func main() {
 
 	// Initialize admin user if needed
 	admin, _ := st.GetAdminUser()
-	if admin == nil || *initPassword != "" {
-		pass := *initPassword
-		if pass == "" {
-			pass = "admin"
-		}
-		hash, err := auth.HashPassword(pass)
+	if *initPassword != "" {
+		hash, err := auth.HashPassword(*initPassword)
 		if err != nil {
 			log.Fatalf("[V2Raynix] Failed to hash admin password: %v", err)
 		}
@@ -71,7 +67,18 @@ func main() {
 			Username:     "admin",
 			PasswordHash: hash,
 		})
-		log.Printf("[V2Raynix] Admin user initialized with username 'admin' and password '%s'", pass)
+		log.Printf("[V2Raynix] Admin password successfully updated for user 'admin'")
+		os.Exit(0)
+	} else if admin == nil {
+		hash, err := auth.HashPassword("admin")
+		if err != nil {
+			log.Fatalf("[V2Raynix] Failed to hash admin password: %v", err)
+		}
+		_ = st.SetAdminUser(&store.UserAccount{
+			Username:     "admin",
+			PasswordHash: hash,
+		})
+		log.Printf("[V2Raynix] Admin user initialized with username 'admin' and password 'admin'")
 	}
 
 	// Random JWT secret
