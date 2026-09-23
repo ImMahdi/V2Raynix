@@ -21,3 +21,23 @@ During the 2-second background polling loop in the Web UI, configuration cards a
 - **Frontend Fix (`web/src/pages/ConfigsPage.jsx`):**
   - Enforce a stable client-side sort order to protect against unordered API payloads.
   - Add sort control options for the user (sort by ping/latency, sort by name, sort by date added).
+
+---
+
+### [TASK-NEXT-02] Real Xray Proxy Delay Testing & Individual Config Test Action
+
+**Problem Statement:**
+Currently, latency testing relies strictly on a raw TCP Handshake to `Server:Port`. If an invalid/garbage configuration uses a popular or live CDN/IP (e.g. `1.1.1.1`, `cloudflare.com`, `google.com`), TCP ping succeeds with low latency (e.g., `10ms`), giving the user a false impression of a working node. Furthermore, users cannot test an individual configuration without running a full batch ping across all configs.
+
+**Planned Architecture & Solution:**
+1. **Real Proxy Delay via Xray Core (`internal/pinger` & `internal/core`):**
+   - Implement real end-to-end testing through Xray core rather than raw TCP handshake.
+   - Run a test request through the proxy outbound (e.g., HTTP GET `http://cp.cloudflare.com` or `generate_204`) using `pinger.RealHTTPDelay`.
+   - Validate full handshake, encryption, UUID, and path authentication. If handshake fails or HTTP status is erroneous, register as failed (`-1`).
+2. **Granular REST Endpoints (`internal/api`):**
+   - `POST /api/configs/{id}/test`: Tests a single specific configuration on-demand and returns its real HTTP delay.
+   - `POST /api/configs/test-all`: Runs concurrent real delay testing across configs with bounded concurrency.
+3. **UI / UX Overhaul (`web/src`):**
+   - Rename global action button from **"Ping All"** to **"Test All"** (with `Zap` or `Gauge` icon).
+   - Add a dedicated **"Test" action button on each `ConfigCard`** (with dedicated icon, e.g., `Zap` / `Play`), featuring an isolated per-card loading/spinning state so users can test single configs with one click.
+   - Keep latency badges visually distinct (e.g., Real HTTP Delay vs. Untested / Failed).
