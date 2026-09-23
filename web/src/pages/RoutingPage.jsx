@@ -32,6 +32,13 @@ export default function RoutingPage({ rules, onCreateRule, onDeleteRule }) {
     });
   };
 
+  const sortedRules = [...(rules || [])].sort((a, b) => {
+    if ((b.priority || 0) !== (a.priority || 0)) {
+      return (b.priority || 0) - (a.priority || 0);
+    }
+    return (a.id || '').localeCompare(b.id || '');
+  });
+
   return (
     <div>
       {/* Header */}
@@ -137,14 +144,14 @@ export default function RoutingPage({ rules, onCreateRule, onDeleteRule }) {
             </tr>
           </thead>
           <tbody>
-            {rules.length === 0 ? (
+            {sortedRules.length === 0 ? (
               <tr>
                 <td colSpan={4} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                   No custom rules defined yet. System defaults to routing un-bypassed traffic through proxy.
                 </td>
               </tr>
             ) : (
-              rules.map(rule => (
+              sortedRules.map(rule => (
                 <tr key={rule.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
                   <td style={{ padding: '0.85rem 1.25rem', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
                     {rule.target}
