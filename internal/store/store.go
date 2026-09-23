@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -222,6 +223,14 @@ func (fs *FileStore) GetConfigs() ([]*ConfigItem, error) {
 		itemCopy := *cfg
 		items = append(items, &itemCopy)
 	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt != items[j].CreatedAt {
+			return items[i].CreatedAt > items[j].CreatedAt
+		}
+		return items[i].ID < items[j].ID
+	})
+
 	return items, nil
 }
 
@@ -336,6 +345,14 @@ func (fs *FileStore) GetRoutingRules() ([]*RoutingRule, error) {
 		ruleCopy := *r
 		rules = append(rules, &ruleCopy)
 	}
+
+	sort.Slice(rules, func(i, j int) bool {
+		if rules[i].Priority != rules[j].Priority {
+			return rules[i].Priority > rules[j].Priority
+		}
+		return rules[i].ID < rules[j].ID
+	})
+
 	return rules, nil
 }
 

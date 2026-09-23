@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -343,6 +344,94 @@ func TestStore_SaveConfigsBatch(t *testing.T) {
 	}
 	if len(configs) != 3 {
 		t.Fatalf("expected 3 configs, got %d", len(configs))
+	}
+}
+
+func TestFileStore_DeterministicOrdering(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "v2raynix-order-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.json")
+	s, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+
+	// 1. Add 6 configs with different CreatedAt and IDs
+	for i := 1; i <= 6; i++ {
+		cfg := &store.ConfigItem{
+			ID:        fmt.Sprintf("cfg-%02d", i),
+			Name:      fmt.Sprintf("Server %d", i),
+			Protocol:  "vless",
+			Server:    fmt.Sprintf("192.168.1.%d", i),
+			Port:      443,
+			CreatedAt: fmt.Sprintf("2026-09-23T10:%02d:00Z", i),
+		}
+		if err := s.SaveConfig(cfg); err != nil {
+			t.Fatalf("failed to save config %d: %v", i, err)
+		}
+	}
+
+	// 2. Add 6 routing rules with varying priorities
+	for i := 1; i <= 6; i++ {
+		rule := &store.RoutingRule{
+			ID:         fmt.Sprintf("rule-%02d", i),
+			Target:     fmt.Sprintf("domain%d.com", i),
+			TargetType: "domain",
+			Action:     "direct",
+			Priority:   i * 10,
+			IsEnabled:  true,
+		}
+		if err := s.SaveRoutingRule(rule); err != nil {
+			t.Fatalf("failed to save rule %d: %v", i, err)
+		}
+	}
+
+	// 3. Verify GetConfigs returns identical order across 20 iterations
+	firstConfigs, err := s.GetConfigs()
+	if err != nil {
+		t.Fatalf("GetConfigs failed: %v", err)
+	}
+	if len(firstConfigs) != 6 {
+		t.Fatalf("expected 6 configs, got %d", len(firstConfigs))
+	}
+
+	for iter := 1; iter <= 20; iter++ {
+		configs, err := s.GetConfigs()
+		if err != nil {
+			t.Fatalf("GetConfigs failed at iteration %d: %v", iter, err)
+		}
+		for idx := range configs {
+			if configs[idx].ID != firstConfigs[idx].ID {
+				t.Fatalf("non-deterministic config ordering at iter %d index %d: expected %s, got %s",
+					iter, idx, firstConfigs[idx].ID, configs[idx].ID)
+			}
+		}
+	}
+
+	// 4. Verify GetRoutingRules returns identical order across 20 iterations
+	firstRules, err := s.GetRoutingRules()
+	if err != nil {
+		t.Fatalf("GetRoutingRules failed: %v", err)
+	}
+	if len(firstRules) != 6 {
+		t.Fatalf("expected 6 rules, got %d", len(firstRules))
+	}
+
+	for iter := 1; iter <= 20; iter++ {
+		rules, err := s.GetRoutingRules()
+		if err != nil {
+			t.Fatalf("GetRoutingRules failed at iteration %d: %v", iter, err)
+		}
+		for idx := range rules {
+			if rules[idx].ID != firstRules[idx].ID {
+				t.Fatalf("non-deterministic rule ordering at iter %d index %d: expected %s, got %s",
+					iter, idx, firstRules[idx].ID, rules[idx].ID)
+			}
+		}
 	}
 }
 
