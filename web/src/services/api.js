@@ -79,6 +79,8 @@ export const api = {
   deleteConfig: (id) => request(`/configs/${id}`, { method: 'DELETE' }),
   activateConfig: (id) => request(`/configs/${id}/activate`, { method: 'POST' }),
   pingAll: () => request('/configs/ping-all', { method: 'POST' }),
+  testConfig: (id) => request(`/configs/${id}/test`, { method: 'POST' }),
+  testAll: () => request('/configs/test-all', { method: 'POST' }),
 
   // Tunnel & Safe Mode
   getTunnelStatus: () => request('/tunnel/status'),

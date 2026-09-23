@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Radio, Copy, Trash2, Activity, Check, CheckCircle } from 'lucide-react';
+import { Radio, Copy, Trash2, Activity, Check, CheckCircle, Zap } from 'lucide-react';
 
-export default function ConfigCard({ config, isActive, onActivate, onDelete, onPing }) {
+export default function ConfigCard({ config, isActive, onActivate, onDelete, onPing, onTest }) {
   const [copied, setCopied] = useState(false);
-  const [pinging, setPinging] = useState(false);
+  const [testing, setTesting] = useState(false);
   const copyTimeoutRef = useRef(null);
 
   useEffect(() => {
@@ -24,13 +24,18 @@ export default function ConfigCard({ config, isActive, onActivate, onDelete, onP
     copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
   };
 
-  const handlePing = async (e) => {
+  const handleTest = async (e) => {
     e.stopPropagation();
-    setPinging(true);
+    if (testing) return;
+    setTesting(true);
     try {
-      await onPing(config.id);
+      if (onTest) {
+        await onTest(config.id);
+      } else if (onPing) {
+        await onPing(config.id);
+      }
     } finally {
-      setPinging(false);
+      setTesting(false);
     }
   };
 
@@ -91,20 +96,29 @@ export default function ConfigCard({ config, isActive, onActivate, onDelete, onP
         </div>
       </div>
 
-      {/* Bottom row: Ping and Action buttons */}
+      {/* Bottom row: Test delay and Action buttons */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
         <div 
-          onClick={handlePing}
+          onClick={handleTest}
           style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.8rem' }}
-          title="Click to ping"
+          title="Click to test real delay"
         >
-          <Activity size={14} className={pinging ? 'animate-spin' : ''} style={{ color: 'var(--text-muted)' }} />
+          <Activity size={14} className={testing ? 'animate-spin' : ''} style={{ color: 'var(--text-muted)' }} />
           <span className={getLatencyClass(config.latencyMs)}>
             {getLatencyText(config.latencyMs)}
           </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <button 
+            className="btn btn-icon" 
+            title="Test Real Proxy Delay" 
+            onClick={handleTest}
+            disabled={testing}
+            style={{ color: '#38bdf8' }}
+          >
+            <Zap size={16} className={testing ? 'animate-spin' : ''} />
+          </button>
           <button 
             className="btn btn-icon" 
             title="Copy Share Link" 

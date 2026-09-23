@@ -161,30 +161,29 @@ export default function App() {
     }
   };
 
-  const handlePingConfig = async (id) => {
-    // Single config ping can trigger all or refresh
+  const handleTestConfig = async (id) => {
     try {
-      const res = await api.pingAll();
-      setConfigs(prev => prev.map(c => ({
-        ...c,
-        latencyMs: res[c.id] !== undefined ? res[c.id] : c.latencyMs,
-      })));
+      const res = await api.testConfig(id);
+      setConfigs(prev => prev.map(c => (c.id === id ? { ...c, latencyMs: res.latencyMs } : c)));
     } catch (err) {
-      console.error(err);
+      console.error('Failed to test config:', err);
     }
   };
 
-  const handlePingAll = async () => {
+  const handleTestAll = async () => {
     try {
-      const res = await api.pingAll();
+      const res = await api.testAll();
       setConfigs(prev => prev.map(c => ({
         ...c,
         latencyMs: res[c.id] !== undefined ? res[c.id] : c.latencyMs,
       })));
     } catch (err) {
-      alert(err.message || 'Failed to ping configs');
+      alert(err.message || 'Failed to test configs');
     }
   };
+
+  const handlePingConfig = handleTestConfig;
+  const handlePingAll = handleTestAll;
 
   const handleImportConfig = async (content, name) => {
     await api.createConfig(content, name);
@@ -243,8 +242,10 @@ export default function App() {
               activeId={status?.activeConfigId}
               onActivate={handleActivateConfig}
               onDelete={handleDeleteConfig}
-              onPing={handlePingConfig}
-              onPingAll={handlePingAll}
+              onPing={handleTestConfig}
+              onPingAll={handleTestAll}
+              onTestConfig={handleTestConfig}
+              onTestAll={handleTestAll}
               onImport={handleImportConfig}
             />
           )}
