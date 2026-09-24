@@ -142,3 +142,40 @@ func TestValidateRoutingParams(t *testing.T) {
 		t.Errorf("expected error for port > 65535, got nil")
 	}
 }
+
+func TestBuildRoutingCommands_IncludesIPProto(t *testing.T) {
+	cmds := network.BuildRoutingCommands("1.2.3.4", "eth0", "192.168.1.1", 22, 2080)
+	foundSSH := false
+	foundWeb := false
+	for _, cmd := range cmds {
+		if strings.Contains(cmd, "sport 22") || strings.Contains(cmd, "dport 22") {
+			if !strings.Contains(cmd, "ipproto tcp") {
+				t.Fatalf("expected 'ipproto tcp' in rule: %s", cmd)
+			}
+			foundSSH = true
+		}
+		if strings.Contains(cmd, "sport 2080") || strings.Contains(cmd, "dport 2080") {
+			if !strings.Contains(cmd, "ipproto tcp") {
+				t.Fatalf("expected 'ipproto tcp' in rule: %s", cmd)
+			}
+			foundWeb = true
+		}
+	}
+	if !foundSSH {
+		t.Fatal("SSH rules not generated")
+	}
+	if !foundWeb {
+		t.Fatal("Web rules not generated")
+	}
+
+	cleanupCmds := network.BuildCleanupCommands("1.2.3.4", "eth0", "192.168.1.1", 22, 2080)
+	for _, cmd := range cleanupCmds {
+		if strings.Contains(cmd, "sport 22") || strings.Contains(cmd, "dport 22") ||
+			strings.Contains(cmd, "sport 2080") || strings.Contains(cmd, "dport 2080") {
+			if !strings.Contains(cmd, "ipproto tcp") {
+				t.Fatalf("expected 'ipproto tcp' in cleanup rule: %s", cmd)
+			}
+		}
+	}
+}
+
