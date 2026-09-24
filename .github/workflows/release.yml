@@ -1,0 +1,73 @@
+name: Release Build & Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release Multi-Arch Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build Embedded Web Dashboard
+        run: |
+          cd web
+          npm ci
+          npm run build
+          cd ..
+
+      - name: Setup Go 1.23
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Build Linux amd64
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p build release-assets
+          go build -ldflags="-s -w" -o build/v2raynix ./cmd/v2raynix
+          tar -czf release-assets/v2raynix-linux-amd64.tar.gz -C build v2raynix
+          cp build/v2raynix release-assets/v2raynix-linux-amd64
+          rm -rf build
+
+      - name: Build Linux arm64
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w" -o build/v2raynix ./cmd/v2raynix
+          tar -czf release-assets/v2raynix-linux-arm64.tar.gz -C build v2raynix
+          cp build/v2raynix release-assets/v2raynix-linux-arm64
+          rm -rf build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: false
+          prerelease: true
+          files: |
+            release-assets/v2raynix-linux-amd64.tar.gz
+            release-assets/v2raynix-linux-amd64
+            release-assets/v2raynix-linux-arm64.tar.gz
+            release-assets/v2raynix-linux-arm64
