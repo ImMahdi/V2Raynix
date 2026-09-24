@@ -48,6 +48,18 @@ func TestApplyWebPort(t *testing.T) {
 		t.Errorf("expected web port 3050, got %d", settings.WebPort)
 	}
 
+	// Verify ResolveWebPort respects store settings when port is not explicitly passed
+	resolved := ResolveWebPort(2080, false, settings)
+	if resolved != 3050 {
+		t.Errorf("expected resolved port 3050, got %d", resolved)
+	}
+
+	// Verify ResolveWebPort respects CLI flag when explicitly passed
+	resolvedExplicit := ResolveWebPort(9090, true, settings)
+	if resolvedExplicit != 9090 {
+		t.Errorf("expected resolved port 9090, got %d", resolvedExplicit)
+	}
+
 	// Invalid ports
 	if err := ApplyWebPort(st, 0); err == nil {
 		t.Errorf("expected error for port 0, got nil")

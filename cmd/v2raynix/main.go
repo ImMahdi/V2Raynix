@@ -123,7 +123,15 @@ func main() {
 	}
 	router := api.NewRouter(deps)
 
-	addr := fmt.Sprintf("0.0.0.0:%d", *port)
+	portExplicit := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "port" {
+			portExplicit = true
+		}
+	})
+
+	listenPort := cli.ResolveWebPort(*port, portExplicit, settings)
+	addr := fmt.Sprintf("0.0.0.0:%d", listenPort)
 	server := &http.Server{
 		Addr:         addr,
 		Handler:      router,

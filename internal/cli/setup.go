@@ -51,6 +51,14 @@ func ApplyWebPort(st store.Store, port int) error {
 	return st.SaveSettings(settings)
 }
 
+// ResolveWebPort resolves the active web listening port based on explicit CLI flags and store settings.
+func ResolveWebPort(flagPort int, portExplicit bool, settings *store.SystemSettings) int {
+	if !portExplicit && settings != nil && settings.WebPort > 0 {
+		return settings.WebPort
+	}
+	return flagPort
+}
+
 // RestartService restarts the v2raynix systemd service
 func RestartService() error {
 	cmd := exec.Command("systemctl", "restart", "v2raynix")
