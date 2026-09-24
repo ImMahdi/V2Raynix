@@ -83,7 +83,7 @@ func GenerateXrayConfig(activeConfig *store.ConfigItem, rules []*store.RoutingRu
 			continue
 		}
 
-		target := strings.TrimSpace(r.Target)
+		target := NormalizeRoutingTarget(r.Target, r.TargetType)
 		if target == "" {
 			continue
 		}
@@ -130,6 +130,24 @@ func GenerateXrayConfig(activeConfig *store.ConfigItem, rules []*store.RoutingRu
 	}
 
 	return json.MarshalIndent(config, "", "  ")
+}
+
+// NormalizeRoutingTarget standardizes well-known geosite and geoip aliases.
+// For example, users frequently enter 'geosite:ir' or 'geosite:iran' to bypass Iranian traffic,
+// but the official tag in geosite.dat (Loyalsoldier / v2fly) is 'CATEGORY-IR' (geosite:category-ir).
+// Passing 'geosite:ir' directly causes Xray to abort startup with exit status 23.
+func NormalizeRoutingTarget(target, targetType string) string {
+	t := strings.TrimSpace(target)
+	lower := strings.ToLower(t)
+
+	switch lower {
+	case "geosite:ir", "geosite:iran":
+		return "geosite:category-ir"
+	case "geosite:ads", "geosite:advertising":
+		return "geosite:category-ads-all"
+	}
+
+	return t
 }
 
 func buildProxyOutbound(cfg *store.ConfigItem) (map[string]interface{}, error) {
