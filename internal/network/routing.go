@@ -41,12 +41,12 @@ func BuildRoutingCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 		fmt.Sprintf("ip route add %s/32 via %s dev %s", remoteProxyIP, defaultGw, defaultIface),
 
 		// 3. Anti-lockout policy rules for SSH
-		fmt.Sprintf("ip rule add sport %d table main priority 1000", sshPort),
-		fmt.Sprintf("ip rule add dport %d table main priority 1001", sshPort),
+		fmt.Sprintf("ip rule add ipproto tcp sport %d table main priority 1000", sshPort),
+		fmt.Sprintf("ip rule add ipproto tcp dport %d table main priority 1001", sshPort),
 
 		// 4. Anti-lockout policy rules for Web UI
-		fmt.Sprintf("ip rule add sport %d table main priority 1002", webPort),
-		fmt.Sprintf("ip rule add dport %d table main priority 1003", webPort),
+		fmt.Sprintf("ip rule add ipproto tcp sport %d table main priority 1002", webPort),
+		fmt.Sprintf("ip rule add ipproto tcp dport %d table main priority 1003", webPort),
 
 		// 5. Inbound Connection Preservation via Netfilter Connmark
 		fmt.Sprintf("iptables -t mangle -N %s", InboundChain),
@@ -88,10 +88,10 @@ func BuildCleanupCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 		"ip rule del to 172.16.0.0/12 table main",
 		"ip rule del to 192.168.0.0/16 table main",
 		"ip rule del to 127.0.0.0/8 table main",
-		fmt.Sprintf("ip rule del sport %d table main", sshPort),
-		fmt.Sprintf("ip rule del dport %d table main", sshPort),
-		fmt.Sprintf("ip rule del sport %d table main", webPort),
-		fmt.Sprintf("ip rule del dport %d table main", webPort),
+		fmt.Sprintf("ip rule del ipproto tcp sport %d table main priority 1000", sshPort),
+		fmt.Sprintf("ip rule del ipproto tcp dport %d table main priority 1001", sshPort),
+		fmt.Sprintf("ip rule del ipproto tcp sport %d table main priority 1002", webPort),
+		fmt.Sprintf("ip rule del ipproto tcp dport %d table main priority 1003", webPort),
 		fmt.Sprintf("ip rule del to %s table main priority 999", remoteProxyIP),
 		"ip rule del priority 999",
 
