@@ -15,6 +15,7 @@ import (
 
 	"github.com/v2raynix/v2raynix/internal/api"
 	"github.com/v2raynix/v2raynix/internal/auth"
+	"github.com/v2raynix/v2raynix/internal/cli"
 	"github.com/v2raynix/v2raynix/internal/core"
 	"github.com/v2raynix/v2raynix/internal/store"
 	"github.com/v2raynix/v2raynix/web"
@@ -26,6 +27,20 @@ var (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "setup" {
+		targetDir := "/etc/v2raynix"
+		if os.Geteuid() != 0 {
+			if _, err := os.Stat("/etc/v2raynix"); err != nil {
+				targetDir = "./data"
+			}
+		}
+		if err := cli.RunSetup(targetDir, os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	port := flag.Int("port", 2080, "Web UI listening port")
 	dataDir := flag.String("data-dir", "", "Path to data directory (default: /etc/v2raynix or ./data)")
 	initPassword := flag.String("init-password", "", "Set or reset the admin password")
