@@ -30,9 +30,115 @@ esac
 
 echo -e "${GREEN}* Detected system architecture: $GOARCH${NC}"
 
+# Ensure unzip & curl are installed
+if ! command -v unzip >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+    echo -e "${YELLOW}* Installing required tools (curl, unzip)...${NC}"
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y && apt-get install -y curl unzip
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y curl unzip
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y curl unzip
+    elif command -v pacman >/dev/null 2>&1; then
+        pacman -Sy --noconfirm curl unzip
+    fi
+fi
+
 # Directory setup
 mkdir -p /etc/v2raynix
 mkdir -p /usr/local/bin
+mkdir -p /usr/local/share/xray
+
+# Download helper with mirror fallback
+fetch_asset() {
+    local primary="$1"
+    local mirror="https://ghproxy.net/${primary}"
+    local dest="$2"
+
+    echo -e "${CYAN}* Downloading: ${primary}...${NC}"
+    if curl -fsSL --connect-timeout 10 -m 90 "$primary" -o "$dest"; then
+        return 0
+    else
+        echo -e "${YELLOW}Primary download failed. Attempting anti-censorship mirror...${NC}"
+        curl -fsSL --connect-timeout 15 -m 180 "$mirror" -o "$dest"
+    fi
+}
+
+ensure_xray() {
+    if command -v xray >/dev/null 2>&1; then
+        echo -e "${GREEN}* Xray core is already installed: $(xray -version 2>/dev/null | head -n1 || echo 'detected')${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}* Xray core not found. Installing latest official release...${NC}"
+    local tmp_zip="/tmp/xray.zip"
+    local asset_name=""
+
+    case "$GOARCH" in
+        amd64) asset_name="Xray-linux-64.zip" ;;
+        arm64) asset_name="Xray-linux-arm64-v8a.zip" ;;
+        *) echo -e "${RED}Unsupported arch for Xray: $GOARCH${NC}"; return 1 ;;
+    esac
+
+    local download_url="https://github.com/XTLS/Xray-core/releases/latest/download/${asset_name}"
+    fetch_asset "$download_url" "$tmp_zip"
+
+    mkdir -p /tmp/xray_unpack
+    unzip -o -q "$tmp_zip" -d /tmp/xray_unpack
+    cp -f /tmp/xray_unpack/xray /usr/local/bin/xray
+    chmod +x /usr/local/bin/xray
+    if [ -f "/tmp/xray_unpack/geosite.dat" ]; then
+        cp -f /tmp/xray_unpack/geosite.dat /usr/local/share/xray/
+        cp -f /tmp/xray_unpack/geosite.dat /usr/local/bin/
+    fi
+    if [ -f "/tmp/xray_unpack/geoip.dat" ]; then
+        cp -f /tmp/xray_unpack/geoip.dat /usr/local/share/xray/
+        cp -f /tmp/xray_unpack/geoip.dat /usr/local/bin/
+    fi
+    rm -rf "$tmp_zip" /tmp/xray_unpack
+    echo -e "${GREEN}* Xray successfully installed: $(xray -version 2>/dev/null | head -n1 || echo 'ok')${NC}"
+}
+
+ensure_tun2socks() {
+    if command -v tun2socks >/dev/null 2>&1; then
+        echo -e "${GREEN}* tun2socks is already installed.${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}* tun2socks not found. Installing latest release...${NC}"
+    local tmp_zip="/tmp/tun2socks.zip"
+    local asset_name="tun2socks-linux-${GOARCH}.zip"
+    local download_url="https://github.com/xjasonlyu/tun2socks/releases/latest/download/${asset_name}"
+
+    fetch_asset "$download_url" "$tmp_zip"
+    mkdir -p /tmp/tun2socks_unpack
+    unzip -o -q "$tmp_zip" -d /tmp/tun2socks_unpack
+    if [ -f "/tmp/tun2socks_unpack/tun2socks" ]; then
+        cp -f /tmp/tun2socks_unpack/tun2socks /usr/local/bin/tun2socks
+    else
+        cp -f /tmp/tun2socks_unpack/tun2socks-linux* /usr/local/bin/tun2socks
+    fi
+    chmod +x /usr/local/bin/tun2socks
+    rm -rf "$tmp_zip" /tmp/tun2socks_unpack
+    echo -e "${GREEN}* tun2socks successfully installed.${NC}"
+}
+
+configure_firewall() {
+    local port="${1:-2080}"
+    if command -v ufw >/dev/null 2>&1 && ufw status | grep -qw "active"; then
+        echo -e "${CYAN}* Allowing port ${port} in UFW...${NC}"
+        ufw allow "${port}/tcp" >/dev/null 2>&1 || true
+    elif command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld; then
+        echo -e "${CYAN}* Allowing port ${port} in firewalld...${NC}"
+        firewall-cmd --add-port="${port}/tcp" --permanent >/dev/null 2>&1 || true
+        firewall-cmd --reload >/dev/null 2>&1 || true
+    fi
+}
+
+# Install dependencies
+ensure_xray
+ensure_tun2socks
+configure_firewall 2080
 
 # Build or install binary
 if [ -f "./bin/v2raynix" ]; then
