@@ -54,7 +54,7 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
           <div>
             <div style={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               V2Raynix
-              <span style={{ fontSize: '0.65rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>CORE</span>
+              <span style={{ fontSize: '0.65rem', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>BETA</span>
             </div>
           </div>
         </div>

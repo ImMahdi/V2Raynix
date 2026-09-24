@@ -22,8 +22,8 @@ import (
 )
 
 var (
-	Version   = "1.0.0"
-	BuildTime = "2026-09-20"
+	Version   = "0.9.0-beta"
+	BuildTime = "2026-09-24"
 )
 
 func main() {
