@@ -435,5 +435,75 @@ func TestFileStore_DeterministicOrdering(t *testing.T) {
 	}
 }
 
+func TestFileStore_UpdateLatenciesBatch(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "v2raynix-store-batch-latency-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.json")
+	s, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	// 1. Save 20 configs with initial LatencyMs = 0
+	configs := make([]*store.ConfigItem, 20)
+	expectedLatencies := make(map[string]int)
+	for i := 0; i < 20; i++ {
+		id := fmt.Sprintf("cfg-%02d", i)
+		configs[i] = &store.ConfigItem{
+			ID:        id,
+			Name:      fmt.Sprintf("Node %d", i),
+			Protocol:  "vless",
+			Server:    fmt.Sprintf("10.0.0.%d", i+1),
+			Port:      443,
+			LatencyMs: 0,
+		}
+		expectedLatencies[id] = (i + 1) * 15
+	}
+	if err := s.SaveConfigsBatch(configs); err != nil {
+		t.Fatalf("failed to save configs batch: %v", err)
+	}
+
+	// Add an unknown ID to ensure batch update gracefully skips missing IDs
+	expectedLatencies["non-existent-node"] = 999
+
+	// 2. Perform UpdateLatenciesBatch
+	if err := s.UpdateLatenciesBatch(expectedLatencies); err != nil {
+		t.Fatalf("UpdateLatenciesBatch failed: %v", err)
+	}
+
+	// 3. Verify in-memory state
+	for i := 0; i < 20; i++ {
+		id := fmt.Sprintf("cfg-%02d", i)
+		cfg, err := s.GetConfigByID(id)
+		if err != nil {
+			t.Fatalf("failed to get config %s: %v", id, err)
+		}
+		if cfg.LatencyMs != (i+1)*15 {
+			t.Fatalf("config %s: expected latency %d, got %d", id, (i+1)*15, cfg.LatencyMs)
+		}
+	}
+
+	// 4. Verify persistence by reloading from disk
+	s2, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reload store from disk: %v", err)
+	}
+
+	for i := 0; i < 20; i++ {
+		id := fmt.Sprintf("cfg-%02d", i)
+		cfg, err := s2.GetConfigByID(id)
+		if err != nil {
+			t.Fatalf("failed to get reloaded config %s: %v", id, err)
+		}
+		if cfg.LatencyMs != (i+1)*15 {
+			t.Fatalf("reloaded config %s: expected latency %d, got %d", id, (i+1)*15, cfg.LatencyMs)
+		}
+	}
+}
+
 
 

@@ -480,6 +480,20 @@ func TestAPI_ConfigTestEndpoints(t *testing.T) {
 	if _, ok := batchRes[configID]; !ok {
 		t.Errorf("expected configID %s in batch results", configID)
 	}
+
+	// 4. Batch ping-all -> 200 OK
+	req = httptest.NewRequest(http.MethodPost, "/api/configs/ping-all", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for ping-all, got %d", rec.Code)
+	}
+	var pingRes map[string]int
+	_ = json.Unmarshal(rec.Body.Bytes(), &pingRes)
+	if _, ok := pingRes[configID]; !ok {
+		t.Errorf("expected configID %s in ping-all results", configID)
+	}
 }
 
 func TestAPI_SystemUpdateEndpoints(t *testing.T) {

@@ -341,9 +341,7 @@ func (r *Router) handlePingAll(w http.ResponseWriter, req *http.Request) {
 	}
 
 	results := pinger.BatchPingContext(req.Context(), configs, 5, 2*time.Second)
-	for id, lat := range results {
-		_ = r.deps.Store.UpdateLatency(id, lat)
-	}
+	_ = r.deps.Store.UpdateLatenciesBatch(results)
 
 	writeJSON(w, http.StatusOK, results)
 }
@@ -373,9 +371,7 @@ func (r *Router) handleTestAll(w http.ResponseWriter, req *http.Request) {
 	}
 
 	results := pinger.BatchRealTestContext(req.Context(), configs, 5, 3*time.Second)
-	for id, lat := range results {
-		_ = r.deps.Store.UpdateLatency(id, lat)
-	}
+	_ = r.deps.Store.UpdateLatenciesBatch(results)
 
 	writeJSON(w, http.StatusOK, results)
 }
