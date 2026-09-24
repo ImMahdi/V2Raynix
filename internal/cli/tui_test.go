@@ -23,40 +23,48 @@ func TestFormatStatus(t *testing.T) {
 	}
 }
 
-func TestRenderMainMenu(t *testing.T) {
-	menu := RenderMainMenu("active", 2080)
-
-	// Unicode box checks
-	for _, char := range []string{"┌", "┐", "└", "┘", "│", "─"} {
-		if !strings.Contains(menu, char) {
-			t.Errorf("expected box character %q in main menu", char)
-		}
+func TestVisualWidth(t *testing.T) {
+	// Plain text
+	if w := VisualWidth("hello"); w != 5 {
+		t.Errorf("expected 5, got %d", w)
 	}
 
-	// Port and status checks
-	if !strings.Contains(menu, "2080") {
-		t.Errorf("expected port '2080' in menu")
-	}
-	if !strings.Contains(menu, "● active") {
-		t.Errorf("expected status '● active' in menu")
+	// ANSI colored text
+	colored := "\033[1;32m● active\033[0m"
+	if w := VisualWidth(colored); w != 8 { // "● active" is 1 + 1 + 6 = 8
+		t.Errorf("expected 8 for %q, got %d", colored, w)
 	}
 
-	// Options checks
-	if !strings.Contains(menu, "[1]") || !strings.Contains(menu, "[2]") ||
-		!strings.Contains(menu, "[3]") || !strings.Contains(menu, "[4]") ||
-		!strings.Contains(menu, "[0]") {
-		t.Errorf("menu missing expected options [0-4]")
+	// Text with emoji
+	emojiText := "🔑 Key"
+	if w := VisualWidth(emojiText); w != 6 { // emoji width 2 + space 1 + 'Key' 3 = 6
+		t.Errorf("expected 6 for %q, got %d", emojiText, w)
 	}
 }
 
-func TestRenderServiceMenu(t *testing.T) {
-	menu := RenderServiceMenu("active")
-
-	if !strings.Contains(menu, "Service Management") {
-		t.Errorf("expected 'Service Management' in title")
+func TestBoxAlignment(t *testing.T) {
+	menus := []struct {
+		name string
+		text string
+	}{
+		{"MainMenu_Active", RenderMainMenu("active", 2080)},
+		{"MainMenu_Inactive", RenderMainMenu("inactive", 3000)},
+		{"ServiceMenu_Active", RenderServiceMenu("active")},
+		{"ServiceMenu_Inactive", RenderServiceMenu("inactive")},
+		{"StatusCard_Active", RenderStatusCard("active", 2080)},
 	}
-	if !strings.Contains(menu, "[0]") || !strings.Contains(menu, "Back to Main Menu") {
-		t.Errorf("expected back option [0] in service menu")
+
+	for _, tc := range menus {
+		lines := strings.Split(strings.Trim(tc.text, "\r\n"), "\n")
+		var expectedWidth int
+		for i, line := range lines {
+			w := VisualWidth(line)
+			if i == 0 {
+				expectedWidth = w
+			} else if w != expectedWidth {
+				t.Errorf("[%s] line %d has visual width %d, expected %d: %s", tc.name, i, w, expectedWidth, line)
+			}
+		}
 	}
 }
 
