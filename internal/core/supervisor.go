@@ -252,6 +252,14 @@ func (s *Supervisor) watchProcess(cmd *exec.Cmd, name string) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
+		// If this command is no longer the active command for this role, ignore exit
+		if name == "xray" && s.xrayCmd != cmd {
+			return
+		}
+		if name == "tun2socks" && s.tun2socksCmd != cmd {
+			return
+		}
+
 		if name == "xray" && s.xrayLogFile != nil {
 			_ = s.xrayLogFile.Close()
 			s.xrayLogFile = nil
