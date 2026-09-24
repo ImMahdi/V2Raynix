@@ -12,11 +12,104 @@ import (
 
 // TestHelperProcess is used as an OS-agnostic mock child process
 func TestHelperProcess(t *testing.T) {
-	if os.Getenv("TEST_HELPER_PROCESS") != "1" {
+	switch os.Getenv("TEST_HELPER_PROCESS") {
+	case "1":
+		time.Sleep(50 * time.Millisecond)
+		os.Exit(1)
+	case "long":
+		time.Sleep(10 * time.Second)
+		os.Exit(0)
+	default:
 		return
 	}
-	time.Sleep(50 * time.Millisecond)
-	os.Exit(1)
+}
+
+func TestSupervisor_ReconnectWatchdogRace(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "v2raynix-watchdog-race-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	st, err := store.New(filepath.Join(tempDir, "data.json"))
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	sup := NewSupervisor(st, 120, true, tempDir)
+	sup.state = "connected"
+
+	// Start initial xray and tun2socks processes (cmd1, tunCmd1)
+	cmd1 := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+	cmd1.Env = append(os.Environ(), "TEST_HELPER_PROCESS=long")
+	if err := cmd1.Start(); err != nil {
+		t.Fatalf("failed to start cmd1: %v", err)
+	}
+	sup.xrayCmd = cmd1
+	sup.watchProcess(cmd1, "xray")
+
+	tunCmd1 := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+	tunCmd1.Env = append(os.Environ(), "TEST_HELPER_PROCESS=long")
+	if err := tunCmd1.Start(); err != nil {
+		_ = cmd1.Process.Kill()
+		t.Fatalf("failed to start tunCmd1: %v", err)
+	}
+	sup.tun2socksCmd = tunCmd1
+	sup.watchProcess(tunCmd1, "tun2socks")
+
+	// Start replacement processes (cmd2, tunCmd2) representing reconnect / new config
+	cmd2 := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+	cmd2.Env = append(os.Environ(), "TEST_HELPER_PROCESS=long")
+	if err := cmd2.Start(); err != nil {
+		_ = cmd1.Process.Kill()
+		_ = tunCmd1.Process.Kill()
+		t.Fatalf("failed to start cmd2: %v", err)
+	}
+	defer func() {
+		if cmd2.Process != nil {
+			_ = cmd2.Process.Kill()
+		}
+	}()
+
+	tunCmd2 := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+	tunCmd2.Env = append(os.Environ(), "TEST_HELPER_PROCESS=long")
+	if err := tunCmd2.Start(); err != nil {
+		_ = cmd1.Process.Kill()
+		_ = tunCmd1.Process.Kill()
+		_ = cmd2.Process.Kill()
+		t.Fatalf("failed to start tunCmd2: %v", err)
+	}
+	defer func() {
+		if tunCmd2.Process != nil {
+			_ = tunCmd2.Process.Kill()
+		}
+	}()
+
+	sup.xrayCmd = cmd2
+	sup.watchProcess(cmd2, "xray")
+	sup.tun2socksCmd = tunCmd2
+	sup.watchProcess(tunCmd2, "tun2socks")
+
+	// Now kill the old processes (cmd1, tunCmd1).
+	// Their watchdog goroutines will wake up on cmd.Wait().
+	_ = cmd1.Process.Kill()
+	_ = tunCmd1.Process.Kill()
+
+	// Wait briefly for the watchdog goroutines to run
+	time.Sleep(200 * time.Millisecond)
+
+	// Without the fix, the stale watchdog for cmd1 or tunCmd1 will see state == "connected",
+	// assume a crash occurred, and trigger stopTunnelLocked(), terminating cmd2/tunCmd2 and
+	// setting state to "disconnected".
+	if state := sup.GetStatus().State; state != "connected" {
+		t.Fatalf("expected state to remain 'connected', got '%s'", state)
+	}
+	if sup.xrayCmd != cmd2 {
+		t.Fatalf("expected active xrayCmd to still be cmd2, got %v", sup.xrayCmd)
+	}
+	if sup.tun2socksCmd != tunCmd2 {
+		t.Fatalf("expected active tun2socksCmd to still be tunCmd2, got %v", sup.tun2socksCmd)
+	}
 }
 
 func TestSupervisor_ChildCrashWatchdog(t *testing.T) {
