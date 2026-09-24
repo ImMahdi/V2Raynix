@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/v2raynix/v2raynix/releases"><img src="https://img.shields.io/badge/نسخه-v0.9.0--beta-orange.svg?style=flat-square" alt="نسخه"></a>
+  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/نسخه-v0.9.0--beta-orange.svg?style=flat-square" alt="نسخه"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-%3E%3D1.23-blue.svg?style=flat-square" alt="نسخه Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/مجوز-MIT-green.svg?style=flat-square" alt="مجوز"></a>
   <img src="https://img.shields.io/badge/پلتفرم-Linux%20(amd64%20%7C%20arm64)-purple.svg?style=flat-square" alt="پلتفرم">
@@ -47,7 +47,7 @@
 نصب و راه‌اندازی V2Raynix روی تمامی توزیع‌های لینوکس (**Ubuntu**, **Debian**, **CentOS**, **Fedora**, **Arch Linux**) تنها با اجرای **یک دستور** در ترمینال بدون نیاز به نصب Go، کامپایل یا پیش‌نیازهای پیچیده:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/v2raynix/v2raynix/master/scripts/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/master/scripts/install.sh)
 ```
 
 ### 🪄 مراحل انجام‌شده توسط اسکریپت نصب خودکار:
@@ -208,7 +208,7 @@ Flags:
 
 ```bash
 # ۱. دریافت سورس مخزن
-git clone https://github.com/v2raynix/v2raynix.git
+git clone https://github.com/ImMahdi/V2Raynix.git
 cd v2raynix
 
 # ۲. بیلد فرانت‌اند ری‌اکت

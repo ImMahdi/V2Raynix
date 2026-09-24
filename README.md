@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/v2raynix/v2raynix/releases"><img src="https://img.shields.io/badge/version-v0.9.0--beta-orange.svg?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/version-v0.9.0--beta-orange.svg?style=flat-square" alt="Version"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/go-%3E%3D1.23-blue.svg?style=flat-square" alt="Go Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-Linux%20(amd64%20%7C%20arm64)-purple.svg?style=flat-square" alt="Platform">
@@ -47,7 +47,7 @@
 Install and start V2Raynix on any Linux server (**Ubuntu**, **Debian**, **CentOS**, **Fedora**, or **Arch Linux**) with a single command — **no Go, no Node.js, and zero build steps required**:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/v2raynix/v2raynix/master/scripts/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/master/scripts/install.sh)
 ```
 
 ### 🪄 What the Installer Does Automatically:
@@ -208,7 +208,7 @@ If you prefer compiling directly from the source code rather than using the auto
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/v2raynix/v2raynix.git
+git clone https://github.com/ImMahdi/V2Raynix.git
 cd v2raynix
 
 # 2. Build the React SPA frontend
