@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bufio"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/v2raynix/v2raynix/internal/store"
@@ -66,5 +68,42 @@ func TestApplyWebPort(t *testing.T) {
 	}
 	if err := ApplyWebPort(st, 70000); err == nil {
 		t.Errorf("expected error for port 70000, got nil")
+	}
+}
+
+func TestReadPasswordSilent(t *testing.T) {
+	origIsTerminal := termIsTerminal
+	termIsTerminal = func(fd int) bool { return false }
+	defer func() { termIsTerminal = origIsTerminal }()
+
+	input := "supersecret123\n"
+	reader := bufio.NewReader(strings.NewReader(input))
+	pass, err := ReadPasswordSilent("Enter password: ", reader)
+	if err != nil {
+		t.Fatalf("ReadPasswordSilent failed: %v", err)
+	}
+	if pass != "supersecret123" {
+		t.Errorf("expected 'supersecret123', got '%s'", pass)
+	}
+}
+
+func TestReadPasswordSilent_Terminal(t *testing.T) {
+	origIsTerminal := termIsTerminal
+	origReadPassword := termReadPassword
+	termIsTerminal = func(fd int) bool { return true }
+	termReadPassword = func(fd int) ([]byte, error) {
+		return []byte("terminalpass123"), nil
+	}
+	defer func() {
+		termIsTerminal = origIsTerminal
+		termReadPassword = origReadPassword
+	}()
+
+	pass, err := ReadPasswordSilent("Enter password: ", nil)
+	if err != nil {
+		t.Fatalf("ReadPasswordSilent terminal failed: %v", err)
+	}
+	if pass != "terminalpass123" {
+		t.Errorf("expected 'terminalpass123', got '%s'", pass)
 	}
 }
