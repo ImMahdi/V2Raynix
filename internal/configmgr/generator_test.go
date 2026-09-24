@@ -405,3 +405,80 @@ func TestGenerateXrayConfig_VMessWithRemarkFragment(t *testing.T) {
 		t.Fatalf("GenerateXrayConfig failed with fragment: %v", err)
 	}
 }
+
+func TestNormalizeRoutingTarget(t *testing.T) {
+	tests := []struct {
+		input    string
+		targetTy string
+		expected string
+	}{
+		{"geosite:ir", "domain", "geosite:category-ir"},
+		{"geosite:IR", "domain", "geosite:category-ir"},
+		{"geosite:iran", "domain", "geosite:category-ir"},
+		{"geosite:category-ir", "domain", "geosite:category-ir"},
+		{"geosite:ads", "domain", "geosite:category-ads-all"},
+		{"geosite:advertising", "domain", "geosite:category-ads-all"},
+		{"geoip:ir", "ip", "geoip:ir"},
+		{"google.com", "domain", "google.com"},
+		{"1.1.1.1", "ip", "1.1.1.1"},
+	}
+
+	for _, tc := range tests {
+		actual := configmgr.NormalizeRoutingTarget(tc.input, tc.targetTy)
+		if actual != tc.expected {
+			t.Errorf("NormalizeRoutingTarget(%q) = %q, expected %q", tc.input, actual, tc.expected)
+		}
+	}
+}
+
+func TestGenerateXrayConfig_GeositeIRNormalization(t *testing.T) {
+	cfg := &store.ConfigItem{
+		ID:       "cfg-test-geo",
+		Name:     "Test Geo Server",
+		Protocol: "vless",
+		Server:   "1.2.3.4",
+		Port:     443,
+		RawURL:   "vless://uuid-123@1.2.3.4:443?type=tcp&security=tls&sni=example.com",
+	}
+
+	rules := []*store.RoutingRule{
+		{
+			ID:         "r1",
+			Target:     "geosite:ir",
+			TargetType: "domain",
+			Action:     "direct",
+			IsEnabled:  true,
+		},
+		{
+			ID:         "r2",
+			Target:     "geosite:iran",
+			TargetType: "preset",
+			Action:     "direct",
+			IsEnabled:  true,
+		},
+	}
+
+	data, err := configmgr.GenerateXrayConfig(cfg, rules, 10808, 10809)
+	if err != nil {
+		t.Fatalf("GenerateXrayConfig failed: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal generated json: %v", err)
+	}
+
+	routing := parsed["routing"].(map[string]interface{})
+	xRules := routing["rules"].([]interface{})
+	if len(xRules) != 2 {
+		t.Fatalf("expected 2 routing rules, got %d", len(xRules))
+	}
+
+	for i, r := range xRules {
+		rm := r.(map[string]interface{})
+		domains := rm["domain"].([]interface{})
+		if len(domains) != 1 || domains[0] != "geosite:category-ir" {
+			t.Errorf("rule %d: expected domain ['geosite:category-ir'], got %v", i, domains)
+		}
+	}
+}

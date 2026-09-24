@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -173,6 +174,15 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	s.activeGw = gw
 	s.activeSSHPort = sshPort
 
+	// 2.5 Preflight check: validate Xray configuration syntax before launching
+	testCmd := exec.Command("xray", "-test", "-c", xrayConfigPath)
+	if testOut, testErr := testCmd.CombinedOutput(); testErr != nil {
+		rawErr := strings.TrimSpace(string(testOut))
+		s.addLog("error", fmt.Sprintf("Xray configuration preflight validation failed: %s", rawErr))
+		s.state = "disconnected"
+		return fmt.Errorf("xray configuration test failed: %s", rawErr)
+	}
+
 	// 3. Start Xray child process
 	s.addLog("info", fmt.Sprintf("Launching Xray core on 127.0.0.1:10808 (inbound) -> %s:%d...", cfg.Server, cfg.Port))
 	xrayCmd := exec.Command("xray", "run", "-c", xrayConfigPath)
@@ -193,12 +203,32 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	s.xrayCmd = xrayCmd
 	s.watchProcess(xrayCmd, "xray")
 
-	// Wait for Xray inbound port to be ready (up to 2 seconds)
-	if !waitForPortReady("127.0.0.1:10808", 2*time.Second) {
-		s.addLog("warn", "Xray port 127.0.0.1:10808 did not become ready within 2s, proceeding with routing setup...")
-	} else {
-		s.addLog("info", "Xray inbound port 127.0.0.1:10808 is ready and accepting connections")
+	// Wait for Xray inbound port to be ready (up to 3 seconds)
+	if !waitForPortReady("127.0.0.1:10808", 3*time.Second) {
+		var logErr string
+		if data, rErr := os.ReadFile(xrayLogPath); rErr == nil && len(data) > 0 {
+			lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+			if len(lines) > 0 {
+				logErr = lines[len(lines)-1]
+			}
+		}
+		if logErr != "" {
+			s.addLog("error", fmt.Sprintf("Xray port 127.0.0.1:10808 did not become ready: %s", logErr))
+		} else {
+			s.addLog("error", "Xray port 127.0.0.1:10808 did not become ready within 3s, aborting tunnel setup")
+		}
+		if s.xrayCmd != nil && s.xrayCmd.Process != nil {
+			_ = s.xrayCmd.Process.Kill()
+			s.xrayCmd = nil
+		}
+		if s.xrayLogFile != nil {
+			_ = s.xrayLogFile.Close()
+			s.xrayLogFile = nil
+		}
+		s.state = "disconnected"
+		return fmt.Errorf("xray failed to start on 127.0.0.1:10808: %s", logErr)
 	}
+	s.addLog("info", "Xray inbound port 127.0.0.1:10808 is ready and accepting connections")
 
 	// 4. Setup routing commands
 	if iface != "" && gw != "" && remoteIP != "" {

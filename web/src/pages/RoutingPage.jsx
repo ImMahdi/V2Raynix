@@ -59,9 +59,9 @@ export default function RoutingPage({ rules, onCreateRule, onDeleteRule }) {
           <button 
             className="btn btn-secondary"
             style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
-            onClick={() => handleAddPreset('geosite:ir', 'domain', 'direct')}
+            onClick={() => handleAddPreset('geosite:category-ir', 'domain', 'direct')}
           >
-            + Bypass Iran Websites (geosite:ir)
+            + Bypass Iran Websites (geosite:category-ir)
           </button>
           <button 
             className="btn btn-secondary"
@@ -90,7 +90,7 @@ export default function RoutingPage({ rules, onCreateRule, onDeleteRule }) {
             <input 
               type="text" 
               className="input-field" 
-              placeholder="e.g. google.com, 1.1.1.1, geosite:ir" 
+              placeholder="e.g. google.com, 1.1.1.1, geosite:category-ir" 
               value={target}
               onChange={(e) => setTarget(e.target.value)}
               required
