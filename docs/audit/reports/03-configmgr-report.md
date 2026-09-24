@@ -6,8 +6,8 @@
 > - `internal/configmgr/generator.go`  
 > - `internal/configmgr/parser_test.go`  
 > - `internal/configmgr/generator_test.go`  
-> **Auditor:** Principal Protocol Parsing & Xray Config Generation Auditor  
-> **Audit Date:** 2026-09-21  
+> **Auditor:** Principal Protocol Parsing & Proxy Configuration Auditor (Subagent Domain 03)  
+> **Audit Date:** 2026-09-24  
 > **Audit Status:** Completed (Comprehensive Line-by-Line Inspection)  
 
 ---
@@ -18,24 +18,23 @@ The `internal/configmgr` package is the protocol ingestion and translation gatew
 
 Because Xray configuration generation dictates network encapsulation, cipher negotiation, camouflage headers, TLS handshakes, anti-loop socket marks, and split-tunnel routing, defects in this domain have immediate and critical repercussions on network stability, user privacy, and daemon survival.
 
-Our systematic inspection of `internal/configmgr/parser.go`, `internal/configmgr/generator.go`, and their accompanying test suites has revealed 10 significant architectural, protocol, and security defects:
+Our systematic inspection of `internal/configmgr/parser.go`, `internal/configmgr/generator.go`, and their accompanying test suites reveals significant architectural, protocol, and security defects across the 6 audit dimensions mandated in `docs/audit/briefs/03-configmgr-brief.md`:
 
-1. **Infinite Packet Routing Loops on Direct Outbounds (CFG-01):** Anti-loop `sockopt.mark = 81` is applied exclusively to the `proxy` outbound; direct (`freedom`) traffic matches host policy routing rules and loops infinitely back into `tun0`.
-2. **Critical VMess Camouflage & Header Dropping (CFG-02):** The outbound generator for VMess completely omits `wsSettings` (dropping path and Host headers), `grpcSettings`, and `tlsSettings.serverName`, causing immediate connection failures on CDN and TLS-camouflaged endpoints.
-3. **Broken Legacy Shadowsocks Credential Synthesis (CFG-03):** Legacy format `ss://base64(method:password@host:port)` is accepted by `parser.go` but fails in `generator.go`, emitting empty `method` and `password` fields that crash Xray.
-4. **Subscription Link Base64 & Fragment Fragility (CFG-04):** `parseVMess` fails to strip URL fragments (`#name`), and `decodeBase64` does not sanitize MIME line breaks, whitespace, or percent-encodings, causing parser rejections on valid subscription links.
-5. **Type Assertion & Value Boundary Risks in VMessJSON (CFG-05):** Port boundary checks omit the upper limit (`> 65535`), `int`/`int64` unmarshaling cases are absent, and `alterId` is hardcoded to 0, breaking compatibility with legacy VMess nodes.
-6. **Missing Reality & Vision Flow Compatibility Validation (CFG-06):** Reality public keys (`pbk`) and SNI are not validated for presence, and `xtls-rprx-vision` is allowed on unsupported transports (WebSocket, gRPC), crashing Xray at startup.
-7. **DNS Leakage & Loop Hazard via Missing Dedicated DNS Configuration (CFG-07):** Xray is configured with `domainStrategy: "IPIfNonMatch"` but contains zero `dns` block configuration, forcing DNS queries onto the host OS resolver where they loop or leak in cleartext to local ISPs.
-8. **Inbound Port Collisions & Hardcoding (CFG-08):** Inbound ports 10808 (SOCKS5) and 10809 (HTTP) are hardcoded without pre-flight socket binding checks or user configuration options.
-9. **Raw JSON Ingestion Bypassing Inbounds & Anti-Loop Policies (CFG-09):** `custom_json` configurations bypass the injection of local inbounds (10808/10809) and anti-loop socket marks (`mark: 81`), leading to broken tunnel forwarding.
-10. **Wildcard Catch-All Routing Rule Synthesis on Malformed Targets (CFG-10):** Routing rules with invalid or empty `TargetType` generate empty field criteria matching 100% of network traffic.
+1. **VMess Generator Fragment Splitting Omission (CFG-D3-01):** `parseVMess` in `parser.go` strips `#` fragments from raw links, but `buildProxyOutbound` in `generator.go` does not. When `GenerateXrayConfig` is invoked on any VMess item containing a remark fragment (e.g. `#Remark`), base64 decoding fails with `illegal base64 data`, causing tunnel activation to fail completely.
+2. **Missing Xray DNS Block Causing Loopback Traps & DNS Leakage (CFG-D3-02):** `generator.go` sets `routing.domainStrategy = "IPIfNonMatch"` and enables inbound sniffing, but generates zero `"dns"` configuration. When domain routing rules do not match, Xray falls back to the host OS resolver (`net.LookupIP`), which lacks `sockopt.mark = 81`. In TUN mode, this causes an infinite DNS routing loop or leaks DNS queries in cleartext to local ISP resolvers.
+3. **Inbound SOCKS/HTTP Port Collision and Out-of-Range Acceptance (CFG-D3-03):** `GenerateXrayConfig` accepts `localSocksPort` and `localHttpPort` without checking for identical port numbers (`localSocksPort == localHttpPort`) or validating port boundaries (`1 <= port <= 65535`), generating configurations that crash `xray-core` on socket bind.
+4. **Raw Custom JSON Ingestion Bypassing Inbounds & Anti-Loop Policies (CFG-D3-04):** When `Protocol == "custom_json"`, `generator.go` outputs the raw JSON directly, bypassing the injection of local SOCKS/HTTP inbounds, user routing rules, and `sockopt: { mark: 81 }`, breaking `tun2socks` and triggering infinite packet routing loops.
+5. **Broken IPv6 and Password Delimiter Parsing in Shadowsocks (CFG-D3-05):** In `parseShadowsocks`, host and port are split via `strings.SplitN(hostPort, ":", 2)`. IPv6 addresses (e.g. `[2001:db8::1]:8388`) are split on internal colons, causing port conversion to fail and rejecting valid IPv6 endpoints.
+6. **Trojan Transport Camouflage Dropping and SNI Fallback Omission (CFG-D3-06):** In `buildProxyOutbound`, Trojan configurations silently drop WebSocket and gRPC transport parameters (`type=ws`, `path`, `host`, `serviceName`), falling back to TCP and causing connection failures on CDN/WSS endpoints. Missing `sni` also fails to default to the server hostname.
+7. **Reality Security Transport Incompatibility & Parameter Validation Gaps (CFG-D3-07):** `generator.go` permits `security=reality` with incompatible transports such as WebSocket or gRPC, crashing Xray on boot. Furthermore, public keys (`pbk`), short IDs (`sid`), and uTLS fingerprints (`fp`) are not validated against schema constraints.
+8. **Suboptimal Routing Rule Auto-Detection & Target Splitting (CFG-D3-08):** Routing rules with unspecified target types default to `domain` rules even when the target is an IP address or CIDR block, and comma-separated target strings are not parsed into individual list items.
+9. **Missing Percent-Encoding Handling in Base64 Decoding (CFG-D3-09):** `decodeBase64` does not unescape URL-encoded characters (`%2B`, `%2F`, `%3D`), failing on web-encoded subscription links.
 
 ---
 
 ## 2. Graphify Knowledge Graph & Dependency Analysis
 
-The architectural relationship between `configmgr` and adjacent subsystems was mapped via `graphify` (`graphify-out/graph.json`):
+A graph query (`graphify query "configmgr parser generator"`) and architectural mapping reveal the critical placement of `configmgr` within the V2Raynix architecture:
 
 ```
                                   +---------------------------------------+
@@ -56,7 +55,7 @@ The architectural relationship between `configmgr` and adjacent subsystems was m
                                   |     * parseRawJSON()                  |
                                   +-------------------+-------------------+
                                                       |
-                                                      | returns
+                                                      | returns *store.ConfigItem
                                                       v
                                   +---------------------------------------+
                                   |         internal/store                |
@@ -67,7 +66,7 @@ The architectural relationship between `configmgr` and adjacent subsystems was m
                                                       v
                                   +---------------------------------------+
                                   |        internal/core/supervisor       |
-                                  |   (God Node: Central Controller)      |
+                                  |     (Supervisor / Tunnel Lifecycle)   |
                                   +-------------------+-------------------+
                                                       |
                                                       | calls
@@ -90,362 +89,111 @@ The architectural relationship between `configmgr` and adjacent subsystems was m
 ```
 
 ### Architectural Dependency Insights:
-1. **Critical Pipeline Decoupling:**
-   `parser.go` ingests the share link into `store.ConfigItem`, but `generator.go` re-parses the raw URL string (`cfg.RawURL`). Any discrepancy between how `parser.go` validates a link and how `generator.go` interprets it creates a split-brain vulnerability where invalid links are accepted into persistent storage but subsequently crash the core supervisor on tunnel activation.
-2. **Coupling to Linux Policy Routing:**
-   `generator.go` must generate configuration that coexists with the Linux routing table rules created by `internal/network/routing.go`. Specifically, because `routing.go` sets up `fwmark 81` lookup tables to exempt proxy traffic from `tun0`, `generator.go` must ensure that **all** traffic originating from Xray (both `proxy` and `direct`) bears `mark 81`.
+1. **The Re-parsing Split-Brain Hazard:**
+   `parser.go` ingests the share link into `store.ConfigItem`, but `generator.go` re-parses the raw URL string (`cfg.RawURL`). Any discrepancy between how `parser.go` sanitizes a link and how `generator.go` parses it creates a split-brain condition: links are validated and stored by the API, but crash the supervisor during tunnel startup.
+2. **Coupling to Linux Policy Routing & TUN:**
+   `generator.go` produces configuration that operates under the host policy routing configured by `internal/network/routing.go`. Because `routing.go` sets up `fwmark 81` lookup tables to exempt proxy traffic from `tun0`, `generator.go` must ensure that all network-bound traffic originating from Xray (outbound proxy, freedom direct, and DNS resolution) is marked with `mark: 81`.
 
 ---
 
 ## 3. Findings Summary Table
 
-| ID | Title & Category | Code Location | Severity | Status |
-|---|---|---|---|---|
-| **CFG-01** | Infinite Routing Loop on Direct Outbound Traffic via Missing `sockopt.mark` | `generator.go:L56-L60`, `L300-L308` | **High** | Confirmed |
-| **CFG-02** | VMess Outbound Omission of WebSocket, gRPC, and TLS Camouflage Settings | `generator.go:L231-L241` | **High** | Confirmed |
-| **CFG-03** | Broken Legacy Shadowsocks Outbound Credential Extraction & Silent Error Discard | `generator.go:L272-L290`, `parser.go:L187-L211` | **High** | Confirmed |
-| **CFG-04** | Base64 Fragility in VMess and Shadowsocks Ingestion (Fragments & Line Breaks) | `parser.go:L98-L103`, `L175-L211`, `L254-L269` | **Medium** | Confirmed |
-| **CFG-05** | Type Assertion Gap, Port Range Omission, and AlterId Dropping in VMessJSON | `parser.go:L21-L35`, `L109-L120`, `generator.go:L221` | **Medium** | Confirmed |
-| **CFG-06** | Missing Reality Public Key and Incompatible Flow Parameter Validation | `generator.go:L135-L168` | **Medium** | Confirmed |
-| **CFG-07** | Absence of Dedicated Xray DNS Block Causing DNS Leaks and Loop Deadlocks | `generator.go:L93-L103` | **Medium** | Confirmed |
-| **CFG-08** | Inbound Port Collision Exposure via Hardcoded Ports 10808 and 10809 | `generator.go:L28-L52`, `internal/core/supervisor.go:L135` | **Medium** | Confirmed |
-| **CFG-09** | Raw Custom JSON Pass-Through Bypasses Local Inbounds and Anti-Loop Protection | `generator.go:L19-L21`, `parser.go:L234-L252` | **Medium** | Confirmed |
-| **CFG-10** | Unmatched Wildcard Catch-All Routing Rule Synthesis on Invalid TargetType | `generator.go:L68-L91` | **Low / Refactor** | Confirmed |
+| Finding ID | Title | Severity | Impact Area | File & Line Range |
+| :--- | :--- | :--- | :--- | :--- |
+| **CFG-D3-01** | VMess Generator Fragment Splitting Omission | **HIGH** | Outbound Generation / Base64 | `internal/configmgr/generator.go:248-251` |
+| **CFG-D3-02** | Missing Xray DNS Block Causing Loopback Traps & DNS Leakage | **CRITICAL** | DNS Resolution / Leak Prevention | `internal/configmgr/generator.go:120-130` |
+| **CFG-D3-03** | Inbound SOCKS/HTTP Port Collision & Range Validation Omission | **HIGH** | Inbound Ports / Daemon Stability | `internal/configmgr/generator.go:14, 29-53` |
+| **CFG-D3-04** | Raw Custom JSON Ingestion Bypassing Inbounds & Anti-Loop Policy | **HIGH** | Configuration Integrity / TUN | `internal/configmgr/generator.go:19-22` |
+| **CFG-D3-05** | Broken IPv6 and Password Delimiter Parsing in Shadowsocks | **MEDIUM** | Protocol Ingestion / Shadowsocks | `internal/configmgr/parser.go:198-202, 216-220` |
+| **CFG-D3-06** | Trojan Transport Camouflage Dropping & SNI Fallback Omission | **MEDIUM** | Protocol Generation / Trojan | `internal/configmgr/generator.go:331-354` |
+| **CFG-D3-07** | Reality Security Transport Incompatibility & Validation Gaps | **MEDIUM** | VLESS Reality / Flow Validation | `internal/configmgr/generator.go:178-211` |
+| **CFG-D3-08** | Suboptimal Routing Rule Auto-Detection & Target Splitting | **LOW** | Routing Rule Synthesis | `internal/configmgr/generator.go:96-115` |
+| **CFG-D3-09** | Missing Percent-Encoding Handling in Base64 Decoding | **LOW** | Protocol Ingestion / Base64 | `internal/configmgr/parser.go:270-292` |
 
 ---
 
-## 4. Comprehensive Audit Findings (7-Field Defect Schema)
+## 4. Detailed Defect Analysis
 
----
+### CFG-D3-01: VMess Generator Fragment Splitting Omission
 
-### CFG-01: Infinite Routing Loop on Direct Outbound Traffic via Missing `sockopt.mark`
-
-- **Title & Category:** Network Routing Loop / Policy Routing Mark Omission
-- **Code Location:** `internal/configmgr/generator.go:L56-L60`, `L300-L308`
-- **Severity:** **High**
-- **Trigger Scenario & Root Cause Analysis:**
-  In Linux transparent proxying environments (as implemented in `internal/network/routing.go`), host policy routing redirects all host traffic into the virtual interface `tun0` unless the packet possesses the firewall mark `81` (`from all fwmark 81 lookup main priority 100`).
-  In `generator.go`, `buildProxyOutbound` sets `sockopt: {"mark": 81}` on the `proxy` outbound (`L305-L307`). However, the `direct` outbound (`protocol: "freedom"`) defined at `L56-L60` has empty settings:
+- **Code Location:** `internal/configmgr/generator.go:248-251` (contrast with `internal/configmgr/parser.go:99-102`)
+- **Severity:** **HIGH**
+- **Trigger & Root Cause:**  
+  When parsing a VMess link in `parser.go`, lines 99-102 sanitize the link by stripping remark fragments:
   ```go
-  {
-      "tag":      "direct",
-      "protocol": "freedom",
-      "settings": map[string]interface{}{},
+  b64Data := strings.TrimPrefix(link, "vmess://")
+  if idx := strings.IndexAny(b64Data, "#?"); idx != -1 {
+      b64Data = b64Data[:idx]
   }
+  decoded, err := decodeBase64(b64Data)
   ```
-  When a user defines routing rules to bypass domestic domains or IP ranges (e.g. `geosite:ir`, `10.0.0.0/8`, or local LAN CIDRs with `action: "direct"`), Xray evaluates the routing table and routes those packets through the `direct` outbound. Because the direct outbound lacks `streamSettings.sockopt.mark = 81`, the kernel routes the egress packets directly back into `tun0`. `tun2socks` intercepts the packets and forwards them again to Xray's SOCKS5 inbound (10808). This triggers an immediate, CPU-saturating infinite packet routing loop, rendering all direct/bypassed traffic completely unreachable.
-- **Proof of Concept / Verification Method:**
-  1. Initialize a configuration with a direct routing rule for a destination IP (e.g. `198.51.100.50`).
-  2. Generate configuration via `GenerateXrayConfig(cfg, rules, 10808, 10809)`.
-  3. Inspect the resulting JSON structure for the outbound with `"tag": "direct"`.
-  4. Confirm that `streamSettings.sockopt.mark` is completely absent from the direct outbound.
-  5. Under Linux policy routing with `tun0`, sending traffic to `198.51.100.50` causes routing loop packet counters in iptables/nftables to increment exponentially until buffer exhaustion.
-- **Recommended Architectural Fix:**
-  Ensure that all outbounds capable of initiating egress network traffic (`proxy` and `direct`) include the anti-loop `sockopt` mark:
+  However, in `generator.go`, `buildProxyOutbound` omits this sanitization:
   ```go
-  freedomOutbound := map[string]interface{}{
-      "tag":      "direct",
-      "protocol": "freedom",
-      "settings": map[string]interface{}{},
-      "streamSettings": map[string]interface{}{
-          "sockopt": map[string]interface{}{
-              "mark": 81,
-          },
-      },
-  }
+  case "vmess":
+      b64 := strings.TrimPrefix(cfg.RawURL, "vmess://")
+      decoded, err := decodeBase64(b64)
   ```
-- **Existing Strengths & Robustness:**
-  `buildProxyOutbound` reliably attaches mark 81 to the primary proxy outbound, successfully preventing loops on proxy-bound egress traffic.
-
----
-
-### CFG-02: VMess Outbound Omission of WebSocket, gRPC, and TLS Camouflage Settings
-
-- **Title & Category:** Protocol Ingestion & Configuration Synthesis / Functional Omission
-- **Code Location:** `internal/configmgr/generator.go:L231-L241`
-- **Severity:** **High**
-- **Trigger Scenario & Root Cause Analysis:**
-  Real-world VMess nodes extensively use WebSocket or gRPC transports combined with CDN reverse proxies (e.g., Cloudflare, Fastly). When parsing a VMess link, `parser.go` defines `VMessJSON` with fields `Net`, `Host`, `Path`, `TLS`, and `Sni`.
-  However, in `generator.go` (`L231-L241`), the generator only constructs:
+  If a VMess link contains a fragment (`#Remark`), `ParseShareLink` successfully imports the link into the database, preserving the full link in `cfg.RawURL`. When the user activates the tunnel, `GenerateXrayConfig` passes `b64` (which still contains `#Remark`) to `decodeBase64`. Because `#` is not a valid base64 character in standard or URL-safe alphabets, `decodeBase64` returns an error, and `GenerateXrayConfig` fails, preventing the tunnel from starting.
+- **PoC / Verification:**  
   ```go
-  network := vmess.Net
-  if network == "" {
-      network = "tcp"
-  }
-  streamSettings := map[string]interface{}{
-      "network": network,
-  }
-  if vmess.TLS == "tls" {
-      streamSettings["security"] = "tls"
-  }
-  outbound["streamSettings"] = streamSettings
+  link := "vmess://eyJ2IjoiMiIsInBzIjoidGVzdCIsImFkZCI6IjEuMi4zLjQiLCJwb3J0IjoiNDQzIiwiaWQiOiJhNmM0ZDdiMi01MjBlLTRiNjktOGNlMi00ZTBkNGM4MmI5NTIiLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6IndzIiwidHlwZSI6Im5vbmUiLCJob3N0IjoiZXhhbXBsZS5jb20iLCJwYXRoIjoiL3dzIiwidGxzIjoiIn0=#RemarkFragment"
+  cfg, err := configmgr.ParseShareLink(link) // Succeeds
+  _, err = configmgr.GenerateXrayConfig(cfg, nil, 10808, 10809)
+  // Fails with: "failed to build proxy outbound: illegal base64 data at input byte ..."
   ```
-  `generator.go` completely fails to evaluate `vmess.Path`, `vmess.Host`, `vmess.Sni`, or `vmess.Type`. If `vmess.Net == "ws"`, no `wsSettings` object is produced; the WebSocket connection is sent without HTTP Host headers or custom request paths, resulting in an immediate HTTP 400/404 from edge CDNs. If `vmess.TLS == "tls"`, no `tlsSettings` object is constructed, dropping `serverName` (SNI); the TLS handshake will fail or present the raw IP, which CDNs reject immediately.
-- **Proof of Concept / Verification Method:**
-  1. Pass the test VMess link from `parser_test.go:L38` (which specifies `net: "ws"`, `host: "example.com"`, `path: "/ws"`) into `GenerateXrayConfig`.
-  2. Parse the generated JSON and inspect `outbounds[0]["streamSettings"]`.
-  3. Notice `wsSettings` is `nil` and `tlsSettings` is `nil`. The generated configuration is functionally non-viable for any CDN-fronted or WebSocket-based VMess server.
-- **Recommended Architectural Fix:**
-  Add comprehensive transport and TLS mapping for VMess in `generator.go`:
+- **Recommended Fix:**  
+  Strip URL fragments and query strings in `generator.go` prior to base64 decoding:
   ```go
-  if vmess.TLS == "tls" {
-      streamSettings["security"] = "tls"
-      tlsMap := map[string]interface{}{}
-      if vmess.Sni != "" {
-          tlsMap["serverName"] = vmess.Sni
-      } else if vmess.Host != "" {
-          tlsMap["serverName"] = vmess.Host
+  case "vmess":
+      b64 := strings.TrimPrefix(cfg.RawURL, "vmess://")
+      if idx := strings.IndexAny(b64, "#?"); idx != -1 {
+          b64 = b64[:idx]
       }
-      streamSettings["tlsSettings"] = tlsMap
-  }
-  if network == "ws" {
-      wsMap := map[string]interface{}{}
-      if vmess.Path != "" {
-          wsMap["path"] = vmess.Path
-      }
-      if vmess.Host != "" {
-          wsMap["headers"] = map[string]string{"Host": vmess.Host}
-      }
-      streamSettings["wsSettings"] = wsMap
-  } else if network == "grpc" {
-      grpcMap := map[string]interface{}{}
-      if vmess.Path != "" {
-          grpcMap["serviceName"] = vmess.Path
-      }
-      streamSettings["grpcSettings"] = grpcMap
-  }
-  ```
-- **Existing Strengths & Robustness:**
-  `buildProxyOutbound` correctly implements full `wsSettings`, `grpcSettings`, and `xhttpSettings` for the VLESS protocol (`L170-L198`).
-
----
-
-### CFG-03: Broken Legacy Shadowsocks Outbound Credential Extraction & Silent Error Discard
-
-- **Title & Category:** Protocol Ingestion & Credential Loss
-- **Code Location:** `internal/configmgr/generator.go:L272-L290`, `internal/configmgr/parser.go:L187-L211`
-- **Severity:** **High**
-- **Trigger Scenario & Root Cause Analysis:**
-  Shadowsocks URIs exist in two common formats:
-  1. **SIP002:** `ss://base64(method:password)@hostname:port#tag`
-  2. **Legacy:** `ss://base64(method:password@hostname:port)#tag`
-  In `parser.go` (`L197-L211`), both formats are supported during initial ingestion.
-  However, in `generator.go` (`L272-L290`), `buildProxyOutbound` assumes **only** SIP002 format:
-  ```go
-  var method, password string
-  if strings.Contains(mainPart, "@") {
-      sub := strings.SplitN(mainPart, "@", 2)
-      decoded, err := decodeBase64(sub[0])
-      if err == nil {
-          mp := strings.SplitN(string(decoded), ":", 2)
-          if len(mp) == 2 {
-              method = mp[0]
-              password = mp[1]
-          }
-      }
-  }
-  ```
-  For legacy format links, `mainPart` is raw base64 and does not contain `@`. Therefore, `strings.Contains(mainPart, "@")` evaluates to `false`, leaving `method` and `password` as empty strings `""`.
-  Furthermore, if `sub[0]` base64 decoding fails or produces an unexpected string format, the error is swallowed by `if err == nil`, leaving credentials empty. The resulting outbound has `"method": ""` and `"password": ""`, causing Xray to reject the configuration on launch.
-- **Proof of Concept / Verification Method:**
-  1. Create a `store.ConfigItem` with `RawURL: "ss://YmYtY2ZiOnRlc3RAMTkyLjE2OC4xMDAuMTo4ODg4#LegacyNode"`.
-  2. Call `GenerateXrayConfig(cfg, nil, 10808, 10809)`.
-  3. Inspect `outbounds[0]["settings"]["servers"][0]`.
-  4. Verify that `"method": ""` and `"password": ""` are generated, resulting in an unusable Xray configuration.
-- **Recommended Architectural Fix:**
-  Mirror the decoding logic of `parser.go` within `generator.go` or, preferably, extract `method` and `password` during parsing and store them as structured fields in `store.ConfigItem` instead of repeatedly re-parsing raw URLs:
-  ```go
-  if strings.Contains(mainPart, "@") {
-      // SIP002 format
-      sub := strings.SplitN(mainPart, "@", 2)
-      decoded, err := decodeBase64(sub[0])
+      decoded, err := decodeBase64(b64)
       if err != nil {
-          return nil, fmt.Errorf("invalid base64 credentials in shadowsocks URL: %w", err)
+          return nil, fmt.Errorf("failed to decode vmess base64: %w", err)
       }
-      mp := strings.SplitN(string(decoded), ":", 2)
-      if len(mp) != 2 {
-          return nil, fmt.Errorf("invalid method:password format in shadowsocks URL")
-      }
-      method, password = mp[0], mp[1]
-  } else {
-      // Legacy format
-      decoded, err := decodeBase64(mainPart)
-      if err != nil {
-          return nil, fmt.Errorf("invalid base64 in legacy shadowsocks URL: %w", err)
-      }
-      decStr := string(decoded)
-      sub := strings.SplitN(decStr, "@", 2)
-      if len(sub) == 2 {
-          mp := strings.SplitN(sub[0], ":", 2)
-          if len(mp) == 2 {
-              method, password = mp[0], mp[1]
-          }
-      }
-  }
-  if method == "" || password == "" {
-      return nil, fmt.Errorf("empty method or password in shadowsocks configuration")
-  }
   ```
-- **Existing Strengths & Robustness:**
-  `parser.go` correctly extracts the server hostname and port for both SIP002 and legacy Shadowsocks URL formats.
+- **Strengths:**  
+  `parser.go` properly implements fragment and query stripping during the initial parse pass, and `decodeBase64` cleans whitespace characters (`\r`, `\n`, `\t`, `' '`).
 
 ---
 
-### CFG-04: Base64 Fragility in VMess and Shadowsocks Ingestion (Fragments & Line Breaks)
+### CFG-D3-02: Missing Xray DNS Block Causing Loopback Traps & DNS Leakage
 
-- **Title & Category:** Input Parsing & RFC 4648 Compliance
-- **Code Location:** `internal/configmgr/parser.go:L98-L103`, `L175-L211`, `L254-L269`
-- **Severity:** **Medium**
-- **Trigger Scenario & Root Cause Analysis:**
-  In real-world subscription feeds:
-  1. VMess share links frequently include a fragment suffix for server remarks (e.g. `vmess://eyJ2Ijoi...#Frankfurt-01`). In `parseVMess` (`L98`), the code executes `b64Data := strings.TrimPrefix(link, "vmess://")` without stripping `#`. When `decodeBase64` runs on this string, the trailing `#` causes standard and URL-safe base64 decoders to fail with `illegal base64 data at input byte ...`.
-  2. Subscription payloads often wrap base64 strings across multiple lines with `\r\n` or contain internal whitespace. Standard Go `base64.DecodeString` fails on any unstripped whitespace.
-  3. URL query parameters in Shadowsocks (such as SIP003 plugin options `ss://...:8388?plugin=obfs-local#Tag`) are not stripped before calling `strconv.Atoi(hp[1])` (`L195`), causing port conversion to fail and discarding legitimate links.
-- **Proof of Concept / Verification Method:**
-  1. Attempt to parse `vmess://eyJ2IjoiMiIsInBzIjoidGVzdCIsImFkZCI6IjEuMi4zLjQiLCJwb3J0Ijo0NDMsImlkIjoiOTZjNGQ3YjItNTIwZS00YjY5LThjZTItNGUwZDRjODJiOTUyIn0=#RemarkFragment`.
-  2. `ParseShareLink` returns `malformed configuration link: invalid base64 in vmess`.
-  3. Attempt to parse a base64 string with embedded newline `\n`.
-  4. `decodeBase64` returns an error rather than sanitizing whitespace.
-- **Recommended Architectural Fix:**
-  1. Strip fragments and query parameters from VMess links before base64 decoding:
-     ```go
-     b64Data := strings.TrimPrefix(link, "vmess://")
-     if idx := strings.IndexAny(b64Data, "#?"); idx != -1 {
-         b64Data = b64Data[:idx]
-     }
-     ```
-  2. Sanitize whitespace in `decodeBase64`:
-     ```go
-     func decodeBase64(s string) ([]byte, error) {
-         clean := strings.Map(func(r rune) rune {
-             if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
-                 return -1
-             }
-             return r
-         }, s)
-         if b, err := base64.StdEncoding.DecodeString(clean); err == nil {
-             return b, nil
-         }
-         if b, err := base64.RawStdEncoding.DecodeString(clean); err == nil {
-             return b, nil
-         }
-         if b, err := base64.URLEncoding.DecodeString(clean); err == nil {
-             return b, nil
-         }
-         return base64.RawURLEncoding.DecodeString(clean)
-     }
-     ```
-- **Existing Strengths & Robustness:**
-  `decodeBase64` attempts multiple encodings in cascade (standard with padding, standard raw, URL-safe with padding, and URL-safe raw).
-
----
-
-### CFG-05: Type Assertion Gap, Port Range Omission, and AlterId Dropping in VMessJSON
-
-- **Title & Category:** Data Model Deserialization & Boundary Validation
-- **Code Location:** `internal/configmgr/parser.go:L21-L35`, `L109-L120`, `internal/configmgr/generator.go:L221`
-- **Severity:** **Medium**
-- **Trigger Scenario & Root Cause Analysis:**
-  1. In `VMessJSON`, `Port`, `Aid`, and `V` are typed as `interface{}` (`L22`, `L25`, `L27`). In `parseVMess`, `Port` is extracted using a type switch covering `float64` and `string` (`L110-L115`). However, `int` and `int64` are omitted. Furthermore, the validation check (`L117`) only verifies `port <= 0`. It fails to enforce the upper port boundary (`port > 65535`), allowing invalid port numbers (e.g. 70000 or 99999) to be persisted.
-  2. `Aid` (alterId) in `VMessJSON` is unmarshaled as `interface{}` but is completely discarded in `generator.go:L221`, where `"alterId": 0` is unconditionally hardcoded. While modern VMess deployments use AEAD (`alterId = 0`), older servers in certain enterprise or legacy subscriptions strictly require non-zero alterId (e.g., 64). Hardcoding 0 without honoring the configured `aid` breaks connection establishment for these servers.
-  3. `vmess.ID` is never checked for non-empty string or UUID compliance in `parseVMess`, allowing empty user IDs to be accepted into storage.
-- **Proof of Concept / Verification Method:**
-  1. Supply a VMess JSON payload with `"port": 70000` and `"aid": 64`.
-  2. `ParseShareLink` succeeds and persists `Port: 70000`.
-  3. `GenerateXrayConfig` emits a configuration with `port: 70000` and `alterId: 0`, dropping the user's `aid`.
-- **Recommended Architectural Fix:**
-  1. Validate port upper bound and add type coverage:
-     ```go
-     port := 0
-     switch p := vmess.Port.(type) {
-     case float64:
-         port = int(p)
-     case int:
-         port = p
-     case string:
-         port, _ = strconv.Atoi(strings.TrimSpace(p))
-     }
-     if vmess.Add == "" || port <= 0 || port > 65535 || strings.TrimSpace(vmess.ID) == "" {
-         return nil, ErrMalformedLink
-     }
-     ```
-  2. Extract and honor `alterId` in `generator.go`:
-     ```go
-     alterID := 0
-     switch a := vmess.Aid.(type) {
-     case float64:
-         alterID = int(a)
-     case int:
-         alterID = a
-     case string:
-         alterID, _ = strconv.Atoi(strings.TrimSpace(a))
-     }
-     ```
-- **Existing Strengths & Robustness:**
-  `parseVLESS` and `parseTrojan` strictly validate `port <= 0 || port > 65535`.
-
----
-
-### CFG-06: Missing Reality Public Key and Incompatible Flow Parameter Validation
-
-- **Title & Category:** Protocol Validation & Daemon Startup Crash Hazard
-- **Code Location:** `internal/configmgr/generator.go:L135-L168`
-- **Severity:** **Medium**
-- **Trigger Scenario & Root Cause Analysis:**
-  VLESS Reality protocol has strict cryptographic and transport prerequisites:
-  1. **Public Key (`publicKey` / `pbk`):** When `security=reality`, Xray-core mandates a valid base64url-encoded Curve25519 public key. If `pbk` query parameter is missing or empty, `generator.go` emits `"publicKey": ""`. Xray-core fails to initialize and terminates with an error: `failed to build reality config: empty public key`.
-  2. **XTLS Vision Flow (`xtls-rprx-vision`):** The vision flow algorithm is exclusively supported over raw TCP transport with TLS or Reality encryption (`network: "tcp"`). If a share link contains `flow=xtls-rprx-vision` alongside `type=ws`, `type=grpc`, or unencrypted transport, `generator.go` blindly injects `"flow": "xtls-rprx-vision"` into `users`. Xray-core terminates on startup with an invalid flow configuration error.
-- **Proof of Concept / Verification Method:**
-  1. Construct a VLESS link with `security=reality` but without `pbk`:
-     `vless://uuid@1.2.3.4:443?type=tcp&security=reality&sni=example.com`
-  2. Pass to `GenerateXrayConfig`.
-  3. The generated config contains `"publicKey": ""`. Executing `xray -test -c xray-active.json` results in immediate configuration rejection.
-  4. Construct a VLESS link with `type=ws` and `flow=xtls-rprx-vision`.
-  5. The resulting config combines WebSocket with vision flow, causing Xray startup failure.
-- **Recommended Architectural Fix:**
-  Add strict validation in `buildProxyOutbound`:
+- **Code Location:** `internal/configmgr/generator.go:120-130`
+- **Severity:** **CRITICAL**
+- **Trigger & Root Cause:**  
+  `GenerateXrayConfig` configures `routing.domainStrategy = "IPIfNonMatch"` and enables sniffing on the SOCKS inbound:
   ```go
-  if q.Get("security") == "reality" {
-      pbk := q.Get("pbk")
-      if pbk == "" {
-          return nil, fmt.Errorf("vless reality requires a non-empty public key (pbk)")
-      }
-      sni := q.Get("sni")
-      if sni == "" {
-          return nil, fmt.Errorf("vless reality requires serverName (sni)")
-      }
-      streamSettings["realitySettings"] = map[string]interface{}{
-          "serverName":  sni,
-          "publicKey":   pbk,
-          "shortId":     q.Get("sid"),
-          "fingerprint": q.Get("fp"),
-      }
-  }
-
-  flow := q.Get("flow")
-  if flow == "xtls-rprx-vision" {
-      sec := q.Get("security")
-      if netType != "tcp" || (sec != "reality" && sec != "tls") {
-          return nil, fmt.Errorf("xtls-rprx-vision is only supported with TCP transport and TLS/Reality security")
-      }
-  }
+  "routing": map[string]interface{}{
+      "domainStrategy": "IPIfNonMatch",
+      "rules":          xRoutingRules,
+  },
   ```
-- **Existing Strengths & Robustness:**
-  `generator.go` correctly maps `fp` (uTLS fingerprint) and `sid` (shortId) into `realitySettings`.
-
----
-
-### CFG-07: Absence of Dedicated Xray DNS Block Causing DNS Leaks and Loop Deadlocks
-
-- **Title & Category:** Network Privacy & DNS Leakage / Loop Deadlock Hazard
-- **Code Location:** `internal/configmgr/generator.go:L93-L103`
-- **Severity:** **Medium**
-- **Trigger Scenario & Root Cause Analysis:**
-  In `generator.go`, `GenerateXrayConfig` configures the routing engine with `"domainStrategy": "IPIfNonMatch"` (`L100`), but completely omits a top-level `"dns"` configuration block:
+  However, the generated Xray JSON completely omits a `"dns"` top-level configuration object and contains no DNS outbound (`tag: "dns-out"`).
+  When incoming connections require domain-to-IP resolution to evaluate `IPIfNonMatch` routing rules, Xray-core falls back to the host operating system's standard resolver (`net.LookupIP`).
+  In a full-tunnel setup using `tun2socks` and Linux policy routing:
+  1. The host OS resolver issues queries via standard UDP/53 sockets that lack `sockopt.mark = 81`.
+  2. These packets are captured by the `tun0` interface routing table, routed back to `tun2socks`, forwarded to `socks-in`, and handed to Xray.
+  3. Xray triggers another `net.LookupIP` to match routing rules, creating an infinite resolution loop that freezes DNS queries.
+  4. If host DNS traffic is somehow exempt from TUN, the queries exit unencrypted to local ISP nameservers, causing severe DNS leaks.
+- **PoC / Verification:**  
+  Inspect generated JSON from `TestGenerateXrayConfig`. The output contains `"log"`, `"inbounds"`, `"outbounds"`, and `"routing"`, but `"dns"` is absent. In an active TUN deployment, querying an un-cached domain results in resolution timeout or cleartext UDP packets on the physical interface.
+- **Recommended Fix:**  
+  Inject a dedicated `"dns"` configuration block and DNS routing rule in `GenerateXrayConfig`:
   ```go
   config := map[string]interface{}{
       "log": map[string]interface{}{
           "loglevel": "warning",
+      },
+      "dns": map[string]interface{}{
+          "servers": []interface{}{
+              "https://1.1.1.1/dns-query",
+              "8.8.8.8",
+              "localhost",
+          },
+          "queryStrategy": "UseIP",
       },
       "inbounds":  inbounds,
       "outbounds": outbounds,
@@ -455,178 +203,256 @@ The architectural relationship between `configmgr` and adjacent subsystems was m
       },
   }
   ```
-  When an application initiates a connection by domain name, Xray inspects domain routing rules. If no domain rule matches, `IPIfNonMatch` compels Xray to resolve the domain to an IP address in order to test IP-based routing rules (e.g. `10.0.0.0/8` direct bypass).
-  Because no internal Xray DNS servers or DNS outbounds are specified, Xray delegates domain resolution to Go's internal standard resolver or host OS resolver (`/etc/resolv.conf`) via plain UDP port 53.
-  This introduces two critical failures:
-  1. **DNS Leakage:** Domain queries generated during proxy routing are dispatched in unencrypted plain text to local ISP DNS servers, exposing user browsing metadata.
-  2. **Resolution Deadlock/Loop:** If host DNS traffic is redirected into `tun0` by policy routing without mark 81, Xray's resolution queries loop back into `tun2socks`, hanging connection establishment indefinitely.
-- **Proof of Concept / Verification Method:**
-  1. Generate an Xray configuration with `GenerateXrayConfig`.
-  2. Unmarshal the JSON and check for the `"dns"` key.
-  3. Observe that `"dns"` is absent.
-  4. Inspect routing rules: Observe that no `outboundTag: "dns-out"` or DNS redirection rules exist.
-- **Recommended Architectural Fix:**
-  Add a secure, encrypted DNS block and corresponding routing rules to `generator.go`:
+  Additionally, add a DNS outbound or ensure freedom/proxy outbounds route DNS traffic with `mark: 81`.
+- **Strengths:**  
+  `inbounds` sniffing is enabled for `http`, `tls`, and `quic`, allowing domain extraction from encrypted payloads.
+
+---
+
+### CFG-D3-03: Inbound SOCKS/HTTP Port Collision and Out-of-Range Acceptance
+
+- **Code Location:** `internal/configmgr/generator.go:14, 29-53`
+- **Severity:** **HIGH**
+- **Trigger & Root Cause:**  
+  `GenerateXrayConfig` takes `localSocksPort` and `localHttpPort` as integer arguments:
   ```go
-  "dns": map[string]interface{}{
-      "servers": []interface{}{
-          "https://1.1.1.1/dns-query",
-          "https://8.8.8.8/dns-query",
-          map[string]interface{}{
-              "address": "1.1.1.1",
-              "domains": []string{"geosite:cn", "geosite:ir"},
-              "expectIPs": []string{},
-              "skipFallback": true,
-          },
-      },
-      "queryStrategy": "UseIPv4",
+  func GenerateXrayConfig(activeConfig *store.ConfigItem, rules []*store.RoutingRule, localSocksPort, localHttpPort int) ([]byte, error)
+  ```
+  The function does not validate:
+  1. Port range validity: ports `<= 0` or `> 65535` are accepted without error.
+  2. Port collision: if `localSocksPort == localHttpPort` (e.g. both set to 10808), both inbounds are generated on the exact same port.
+  When `xray-core` boots with conflicting ports or invalid port numbers, it exits immediately with an address binding error (`bind: address already in use` or `invalid port`), aborting the supervisor.
+- **PoC / Verification:**  
+  ```go
+  cfg := &store.ConfigItem{Protocol: "vless", Server: "1.1.1.1", Port: 443, RawURL: "vless://uuid@1.1.1.1:443"}
+  data, err := configmgr.GenerateXrayConfig(cfg, nil, 10808, 10808) // Same port
+  // err is nil! Generated JSON has two inbounds on 10808.
+  ```
+- **Recommended Fix:**  
+  Add strict port validation at the start of `GenerateXrayConfig`:
+  ```go
+  if localSocksPort <= 0 || localSocksPort > 65535 {
+      return nil, fmt.Errorf("invalid localSocksPort: %d (must be 1-65535)", localSocksPort)
+  }
+  if localHttpPort <= 0 || localHttpPort > 65535 {
+      return nil, fmt.Errorf("invalid localHttpPort: %d (must be 1-65535)", localHttpPort)
+  }
+  if localSocksPort == localHttpPort {
+      return nil, fmt.Errorf("localSocksPort and localHttpPort cannot be identical (%d)", localSocksPort)
   }
   ```
-  Ensure outbound DNS queries are routed either through the `proxy` outbound or direct with `sockopt.mark = 81`.
-- **Existing Strengths & Robustness:**
-  SOCKS5 inbound sniffing is enabled for `"http"`, `"tls"`, and `"quic"` (`generator.go:L38-L41`), extracting destination domain names directly from TLS ClientHello and HTTP request headers.
+- **Strengths:**  
+  Inbounds are strictly bound to loopback (`"listen": "127.0.0.1"`), preventing accidental exposure to the local network or public interfaces.
 
 ---
 
-### CFG-08: Inbound Port Collision Exposure via Hardcoded Ports 10808 and 10809
+### CFG-D3-04: Raw Custom JSON Ingestion Bypassing Inbounds & Anti-Loop Policy
 
-- **Title & Category:** System Resilience & Port Conflict
-- **Code Location:** `internal/configmgr/generator.go:L28-L52`, `internal/core/supervisor.go:L135`
-- **Severity:** **Medium**
-- **Trigger Scenario & Root Cause Analysis:**
-  In `internal/core/supervisor.go:L135`, configuration generation is invoked with hardcoded port values:
-  ```go
-  rawJSON, err := configmgr.GenerateXrayConfig(cfg, rules, 10808, 10809)
-  ```
-  Neither `configmgr` nor `supervisor`:
-  1. Verifies that `localSocksPort` (10808) and `localHttpPort` (10809) are not already bound by existing local processes (such as a system-wide v2ray/xray daemon, Tor, Clash, or a lingering orphaned daemon from an earlier crash).
-  2. Verifies that `localSocksPort != localHttpPort`.
-  3. Exposes configuration settings for these inbound ports in `store.SystemSettings`.
-  If port 10808 or 10809 is in use, Xray fails to bind on startup (`bind: address already in use`). Because `supervisor.go` starts Xray asynchronously and applies network routing rules without confirming socket readiness, host routing directs traffic to `tun0` while no listening proxy daemon exists, causing total host network disconnection.
-- **Proof of Concept / Verification Method:**
-  1. Bind a dummy socket on localhost port 10808 (`nc -l 10808` or equivalent).
-  2. Trigger tunnel activation via `Supervisor.StartTunnel()`.
-  3. `GenerateXrayConfig` emits inbounds with port 10808 without error.
-  4. Xray fails to bind and exits; the host network is severed.
-- **Recommended Architectural Fix:**
-  1. Add pre-flight TCP port binding verification utility in `configmgr` or `supervisor` before config generation:
-     ```go
-     func CheckPortAvailable(port int) error {
-         ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-         if err != nil {
-             return fmt.Errorf("inbound port %d is already in use: %w", port, err)
-         }
-         _ = ln.Close()
-         return nil
-     }
-     ```
-  2. Expose `SocksPort` and `HttpPort` in `store.SystemSettings` with default fallbacks.
-- **Existing Strengths & Robustness:**
-  Inbounds are strictly bound to loopback `127.0.0.1` (`L32`, `L46`), preventing external network access to local proxy entry points.
-
----
-
-### CFG-09: Raw Custom JSON Pass-Through Bypasses Local Inbounds and Anti-Loop Protection
-
-- **Title & Category:** Architectural Bypass & Tunnel Failure
-- **Code Location:** `internal/configmgr/generator.go:L19-L21`, `internal/configmgr/parser.go:L234-L252`
-- **Severity:** **Medium**
-- **Trigger Scenario & Root Cause Analysis:**
-  In `generator.go`:
+- **Code Location:** `internal/configmgr/generator.go:19-22`, `internal/configmgr/parser.go:250-268`
+- **Severity:** **HIGH**
+- **Trigger & Root Cause:**  
+  When an active configuration has `Protocol == "custom_json"`, `generator.go` returns the raw content directly:
   ```go
   // If it's already a raw custom JSON, return its bytes directly
   if activeConfig.Protocol == "custom_json" {
       return []byte(activeConfig.RawURL), nil
   }
   ```
-  `parseRawJSON` (`parser.go:L234-L252`) allows users to import arbitrary Xray configuration files. When `GenerateXrayConfig` processes a `custom_json` item, it returns the raw JSON directly, bypassing:
-  1. Generation of local SOCKS5 (`127.0.0.1:10808`) and HTTP (`127.0.0.1:10809`) inbounds required by `tun2socks`.
-  2. Injection of anti-loop socket marks (`streamSettings.sockopt.mark = 81`) into outbounds.
-  3. Incorporation of application routing rules configured in `store.RoutingRule`.
-  If a user imports a standard server configuration that listens on external interfaces or lacks `mark: 81`, `tun2socks` will fail to communicate with Xray, and outbound proxy traffic will loop infinitely under host policy routing.
-- **Proof of Concept / Verification Method:**
-  1. Import a raw custom JSON configuration missing inbounds on 10808:
-     `{"outbounds": [{"protocol": "freedom"}]}`
-  2. Call `GenerateXrayConfig(cfg, rules, 10808, 10809)`.
-  3. The returned JSON is identical to the input payload. Ports 10808/10809 and anti-loop mark 81 are absent.
-- **Recommended Architectural Fix:**
-  Instead of raw byte pass-through, parse the custom JSON into a structured map, validate or merge required local inbounds (10808/10809), and enforce `sockopt.mark = 81` on all outbounds:
+  This creates multiple architectural failures:
+  1. The required local SOCKS inbound (`127.0.0.1:localSocksPort`) and HTTP inbound are not injected. If the user's custom JSON does not define a SOCKS inbound on that exact port, `tun2socks` cannot connect to Xray, breaking the system proxy.
+  2. Outbounds do not receive the anti-loop socket mark (`streamSettings.sockopt.mark = 81`). All proxy and direct traffic exiting Xray matches the Table 100 policy routing rule and is recirculated into `tun0`, causing an immediate system network freeze.
+  3. Routing rules configured in V2Raynix are ignored.
+- **PoC / Verification:**  
+  Import a standard Xray config JSON that does not define SOCKS port 10808 or `mark: 81`. Start tunnel. `tun2socks` logs connection refused, or host traffic loops indefinitely.
+- **Recommended Fix:**  
+  Parse the custom JSON into a structured map, validate and ensure `inbounds` contain the required SOCKS and HTTP listeners, and ensure all outbounds have `sockopt: { mark: 81 }`:
   ```go
   if activeConfig.Protocol == "custom_json" {
       var customMap map[string]interface{}
       if err := json.Unmarshal([]byte(activeConfig.RawURL), &customMap); err != nil {
-          return nil, fmt.Errorf("invalid custom json payload: %w", err)
+          return nil, fmt.Errorf("invalid custom json: %w", err)
       }
-      injectRequiredInbounds(customMap, localSocksPort, localHttpPort)
-      injectOutboundSockopts(customMap, 81)
+      // Inject mandatory inbounds and ensure mark: 81 on outbounds
+      ensureRequiredInbounds(customMap, localSocksPort, localHttpPort)
+      ensureAntiLoopMarks(customMap, 81)
       return json.MarshalIndent(customMap, "", "  ")
   }
   ```
-- **Existing Strengths & Robustness:**
-  `parseRawJSON` validates that the payload is valid JSON before accepting it into the configuration store.
+- **Strengths:**  
+  `parseRawJSON` validates that the input is syntactically valid JSON before storing it.
 
 ---
 
-### CFG-10: Unmatched Wildcard Catch-All Routing Rule Synthesis on Invalid TargetType
+### CFG-D3-05: Broken IPv6 and Password Delimiter Parsing in Shadowsocks Links
 
-- **Title & Category:** Routing Rule Synthesis & Security Policy Enforcement
-- **Code Location:** `internal/configmgr/generator.go:L68-L91`
-- **Severity:** **Low / Refactor**
-- **Trigger Scenario & Root Cause Analysis:**
-  In `generator.go`, routing rules are converted into Xray rule specifications:
+- **Code Location:** `internal/configmgr/parser.go:198-202, 216-220`
+- **Severity:** **MEDIUM**
+- **Trigger & Root Cause:**  
+  In `parseShadowsocks`, host and port are split using:
   ```go
-  ruleMap := map[string]interface{}{
-      "type":        "field",
-      "outboundTag": r.Action, // "direct", "proxy", "block"
+  hp := strings.SplitN(hostPort, ":", 2)
+  if len(hp) != 2 {
+      return nil, ErrMalformedLink
   }
-  if r.Action == "proxy" {
-      ruleMap["outboundTag"] = "proxy"
-  }
-  if r.TargetType == "domain" {
-      ruleMap["domain"] = []string{r.Target}
-  } else if r.TargetType == "ip" {
-      ruleMap["ip"] = []string{r.Target}
-  }
-  xRoutingRules = append(xRoutingRules, ruleMap)
+  server = hp[0]
+  portStr := hp[1]
   ```
-  If a rule in the database has an empty or unrecognized `TargetType` (e.g. corrupted storage entry or future unsupported type), neither `ruleMap["domain"]` nor `ruleMap["ip"]` is populated. The resulting object is:
-  ```json
-  {
-      "type": "field",
-      "outboundTag": "direct"
-  }
-  ```
-  In Xray-core routing syntax, a field rule with no matching criteria (no domain, ip, port, or network specified) acts as an unconditional **wildcard rule** that matches 100% of network traffic. If the action is `"block"` or `"direct"`, all subsequent routing rules are shadowed and all user traffic is misrouted.
-- **Proof of Concept / Verification Method:**
-  1. Add a routing rule with `TargetType: ""` and `Action: "block"`.
-  2. Call `GenerateXrayConfig`.
-  3. Inspect `routing.rules`. Observe an empty criteria rule matching everything.
-- **Recommended Architectural Fix:**
-  Validate `TargetType` and ensure rules without valid match conditions are ignored or rejected:
+  For an IPv6 endpoint such as `ss://base64@[2001:db8::1]:8388#Node`, `hostPort` is `[2001:db8::1]:8388`.
+  `SplitN(hostPort, ":", 2)` cuts on the first colon, producing:
+  - `hp[0]` = `"[2001"`
+  - `hp[1]` = `"db8::1]:8388"`
+  `strconv.Atoi(portStr)` returns an error, causing `parseShadowsocks` to fail with `ErrMalformedLink`.
+  Furthermore, in legacy Shadowsocks decoding (`base64(method:password@host:port)`), if a password contains an `@` symbol, splitting on the first `@` truncates the password.
+- **PoC / Verification:**  
   ```go
-  if r.TargetType == "domain" && strings.TrimSpace(r.Target) != "" {
-      ruleMap["domain"] = []string{r.Target}
-  } else if r.TargetType == "ip" && strings.TrimSpace(r.Target) != "" {
-      ruleMap["ip"] = []string{r.Target}
-  } else {
-      // Discard invalid/empty rule to prevent wildcard catch-all behavior
-      continue
-  }
+  // Valid SIP002 link with IPv6 server
+  link := "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ=@%5B2001:db8::1%5D:8388#IPv6-Node"
+  _, err := configmgr.ParseShareLink(link)
+  // Fails with ErrMalformedLink
   ```
-- **Existing Strengths & Robustness:**
-  The routing builder correctly checks `if !r.IsEnabled { continue }` to skip disabled rules, and sets `domainStrategy: "IPIfNonMatch"` to support combined domain and IP routing.
+- **Recommended Fix:**  
+  Use `net.SplitHostPort` or search for the last colon to separate host and port, and use `strings.LastIndex` for the `@` separator:
+  ```go
+  host, portStr, err := net.SplitHostPort(hostPort)
+  if err != nil {
+      // Fallback or error
+      return nil, ErrMalformedLink
+  }
+  server = strings.Trim(host, "[]")
+  port, err := strconv.Atoi(portStr)
+  ```
+- **Strengths:**  
+  Supports both SIP002 (`ss://base64(method:password)@host:port`) and Legacy format (`ss://base64(method:password@host:port)`).
 
 ---
 
-## 5. Architectural Recommendations & Remediation Roadmap
+### CFG-D3-06: Trojan Transport Camouflage Dropping & SNI Fallback Omission
 
-1. **Unify Anti-Loop Socket Marks Across All Outbounds:**
-   Immediately modify `GenerateXrayConfig` to ensure that both `proxy` and `direct` (`freedom`) outbounds are configured with `streamSettings.sockopt.mark = 81`.
-2. **Complete VMess and Trojan Camouflage Generation:**
-   Extend `buildProxyOutbound` to construct `wsSettings`, `grpcSettings`, and `tlsSettings` for VMess and Trojan, preventing connection drops when communicating with CDN-proxied endpoints.
-3. **Parse Once, Store Structured Configurations:**
-   Refactor `store.ConfigItem` to store parsed parameters (UUID, cipher method, password, transport type, path, SNI, alterId) in structured fields rather than serializing to `RawURL` and repeatedly parsing via string splits and regex.
-4. **Harden Share Link Base64 Decoding:**
-   Cleanse URL fragments (`#...`), query strings, and whitespace before decoding base64 in `parseVMess` and `parseShadowsocks`.
-5. **Implement Comprehensive Test Coverage:**
-   Add unit tests covering edge cases: VMess with WebSocket and path, base64 links with fragments and newlines, legacy Shadowsocks links, Reality links with missing public keys, and direct outbound anti-loop mark verification.
+- **Code Location:** `internal/configmgr/generator.go:331-354`
+- **Severity:** **MEDIUM**
+- **Trigger & Root Cause:**  
+  In `generator.go`, `buildProxyOutbound` for Trojan constructs the outbound:
+  ```go
+  outbound["streamSettings"] = map[string]interface{}{
+      "security": "tls",
+      "tlsSettings": map[string]interface{}{
+          "serverName": q.Get("sni"),
+      },
+  }
+  ```
+  1. **Transport Camouflage Ignored:** Modern Trojan links (Trojan-Go, Xray-Trojan) often use WebSocket (`type=ws&path=/path&host=domain`) or gRPC (`type=grpc&serviceName=svc`). `generator.go` does not check `q.Get("type")`, `q.Get("path")`, or `q.Get("host")` for Trojan. All transport camouflage is silently dropped, defaulting to TCP. Connections to CDN-fronted or WebSocket-based Trojan endpoints fail immediately.
+  2. **Empty SNI:** If `sni` is not explicitly set in the query string, `serverName` is set to `""`. Standard practice requires falling back to `cfg.Server` (the hostname) to ensure valid TLS SNI during the handshake.
+- **PoC / Verification:**  
+  Generate config for `trojan://pass@example.com:443?type=ws&path=/trojan-ws&host=example.com`. The resulting JSON contains no `wsSettings` and network is set to default TCP.
+- **Recommended Fix:**  
+  Add transport handling for Trojan mirroring VLESS, and fallback `sni` to `cfg.Server`:
+  ```go
+  sni := q.Get("sni")
+  if sni == "" {
+      sni = cfg.Server
+  }
+  tlsMap := map[string]interface{}{
+      "serverName": sni,
+  }
+  // Add wsSettings / grpcSettings based on q.Get("type")
+  ```
+- **Strengths:**  
+  Password and server details are correctly mapped to Xray's `servers` schema.
+
+---
+
+### CFG-D3-07: Reality Security Transport Incompatibility & Validation Gaps
+
+- **Code Location:** `internal/configmgr/generator.go:178-211`
+- **Severity:** **MEDIUM**
+- **Trigger & Root Cause:**  
+  1. **Incompatible Transports for Reality:** `generator.go` validates that `xtls-rprx-vision` requires TCP transport, but fails to validate that `security=reality` itself requires TCP (`netType == "tcp"`). If a link specifies `type=ws&security=reality`, `generator.go` generates both `realitySettings` and `wsSettings`. Xray-core cannot run Reality over WebSocket, causing startup termination.
+  2. **Missing Schema Validation:** Neither `parser.go` nor `generator.go` validates:
+     - `pbk`: Must be a valid 32-byte base64 Curve25519 public key (43-44 characters).
+     - `sid`: Must be a hexadecimal string of up to 16 hex digits (or empty).
+     - `fp`: Must be a supported uTLS fingerprint (`chrome`, `firefox`, `safari`, `ios`, `android`, `edge`, `360`, `qq`, `random`, `randomized`).
+     Invalid values cause Xray to fail during configuration load or TLS handshakes.
+- **PoC / Verification:**  
+  Provide `vless://uuid@1.1.1.1:443?security=reality&pbk=invalid_key&type=ws&sni=example.com`. `GenerateXrayConfig` generates a config that Xray crashes on with transport/cipher errors.
+- **Recommended Fix:**  
+  Enforce that `security=reality` requires `netType == "tcp"`, and validate public key and fingerprint values:
+  ```go
+  if sec == "reality" {
+      if netType != "tcp" {
+          return nil, fmt.Errorf("vless reality is only supported over tcp transport, got: %s", netType)
+      }
+      // Validate pbk length and base64 encoding
+  }
+  ```
+- **Strengths:**  
+  Enforces non-empty `pbk` and `sni` for Reality, and checks `xtls-rprx-vision` compatibility with TCP and TLS/Reality.
+
+---
+
+### CFG-D3-08: Suboptimal Routing Rule Auto-Detection & Target Splitting
+
+- **Code Location:** `internal/configmgr/generator.go:96-115`
+- **Severity:** **LOW**
+- **Trigger & Root Cause:**  
+  In routing rule synthesis:
+  1. When `TargetType` is unspecified or set to `default`, the logic checks:
+     ```go
+     if strings.HasPrefix(target, "geoip:") {
+         ruleMap["ip"] = []string{target}
+     } else {
+         ruleMap["domain"] = []string{target}
+     }
+     ```
+     If a user inputs a CIDR or IP (e.g. `10.0.0.0/8` or `192.168.1.1`) without selecting `TargetType: "ip"`, it is auto-detected as a domain: `"domain": ["10.0.0.0/8"]`. This rule will never match network traffic.
+  2. If a user enters comma-separated targets (e.g. `google.com, youtube.com`), the string is not split, producing `"domain": ["google.com, youtube.com"]`, which is invalid.
+- **PoC / Verification:**  
+  Create a rule with `Target: "10.0.0.0/8"` and empty `TargetType`. Inspect generated JSON: `ruleMap["domain"]` is populated instead of `ruleMap["ip"]`.
+- **Recommended Fix:**  
+  Parse IP/CIDR using `net.ParseIP` or `net.ParseCIDR` to differentiate IPs from domains, and split targets by comma.
+- **Strengths:**  
+  Correctly filters out disabled rules, normalizes action tags (`direct`, `proxy`, `block`), and maps to Xray's `field` routing rule format.
+
+---
+
+### CFG-D3-09: Missing Percent-Encoding Handling in Base64 Decoding
+
+- **Code Location:** `internal/configmgr/parser.go:270-292`
+- **Severity:** **LOW**
+- **Trigger & Root Cause:**  
+  `decodeBase64` removes whitespace (`\r`, `\n`, `\t`, `' '`), but does not call `url.QueryUnescape`. Subscription feeds and web query links frequently include percent-encoded base64 payloads (e.g. `%2B` instead of `+`, `%2F` instead of `/`, `%3D` instead of `=`). When passed to `decodeBase64`, all four standard decoders fail on `%` characters.
+- **PoC / Verification:**  
+  `vmess://eyJ2Ijoi...%3D%3D` fails with `invalid base64 in vmess`.
+- **Recommended Fix:**  
+  Unescape percent-encoding before cleaning whitespace and decoding:
+  ```go
+  func decodeBase64(s string) ([]byte, error) {
+      if unescaped, err := url.QueryUnescape(s); err == nil {
+          s = unescaped
+      }
+      clean := strings.Map(...)
+  ```
+- **Strengths:**  
+  Attempts all four permutations: Standard, RawStandard, URL, and RawURL encoding.
+
+---
+
+## 5. Architectural Recommendations & Hardening Plan
+
+1. **Eliminate Parser / Generator Split-Brain:**  
+   Refactor `generator.go` to construct outbounds directly from strongly-typed fields stored on `store.ConfigItem` or an intermediate protocol struct, rather than re-parsing `cfg.RawURL` from scratch.
+2. **Comprehensive DNS Architecture in Xray:**  
+   Add a full DNS subsystem to `generator.go` with encrypted DoH (`https://1.1.1.1/dns-query`) and `sockopt.mark = 81` on DNS outbounds to permanently prevent DNS leakage and routing loops.
+3. **Inbound Port Safety & Conflict Detection:**  
+   Validate that `localSocksPort` and `localHttpPort` are in the valid range `[1024, 65535]` and distinct. Ensure the supervisor performs pre-flight socket binding checks before launching Xray.
+4. **Custom JSON Normalization:**  
+   When importing custom JSON, deserialize into a DOM/map, verify presence of essential inbounds, inject `sockopt: { mark: 81 }` into all non-loopback outbounds, and validate syntax with `xray -test`.
+
+---
+
+## 6. Conclusion & Audit Sign-Off
+
+The `internal/configmgr` subsystem demonstrates clean modular structure and covers key proxy protocols (`vless`, `vmess`, `trojan`, `shadowsocks`). However, critical vulnerabilities exist in DNS resolution (loop hazard and DNS leak), inbound port collision handling, custom JSON safety, and VMess fragment re-parsing.
+
+Implementing the defensive remediations outlined above will ensure robust protocol parsing, zero-leak DNS resolution, and rock-solid daemon execution.
+
+**Audit Status:** Completed. Source code remains strictly unchanged.
