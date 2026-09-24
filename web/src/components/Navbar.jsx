@@ -6,10 +6,11 @@ import {
   GitFork, 
   Terminal, 
   Settings, 
-  LogOut 
+  LogOut,
+  Zap
 } from 'lucide-react';
 
-export default function Navbar({ activeTab, onSelectTab, user, onLogout }) {
+export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpdate, onOpenUpdateModal }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'configs', label: 'Configs', icon: Layers },
@@ -90,7 +91,31 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout }) {
         </nav>
 
         {/* User & Logout */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+          {hasUpdate && (
+            <button
+              onClick={onOpenUpdateModal}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.3rem 0.65rem',
+                borderRadius: '20px',
+                background: 'rgba(56, 189, 248, 0.15)',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                color: '#38bdf8',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              title="New core versions available"
+            >
+              <Zap size={13} fill="#38bdf8" />
+              <span>Update Available</span>
+            </button>
+          )}
+
           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
             <span style={{ color: 'var(--text-muted)' }}>user:</span> <strong style={{ color: 'var(--text-primary)' }}>{user?.username || 'admin'}</strong>
           </div>

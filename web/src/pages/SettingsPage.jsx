@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { KeyRound, Shield, Check, Info } from 'lucide-react';
+import { KeyRound, Shield, Check, Info, Cpu, RefreshCw } from 'lucide-react';
 import { api } from '../services/api';
 
-export default function SettingsPage() {
+export default function SettingsPage({ updateData, onCheckUpdates, onOpenUpdateModal }) {
   const [currPassword, setCurrPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -106,6 +106,69 @@ export default function SettingsPage() {
             {updating ? 'Saving...' : 'Update Password'}
           </button>
         </form>
+      </div>
+
+      {/* Core Engine Versions */}
+      <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <Cpu size={20} color="#38bdf8" />
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Core Engine Versions</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onCheckUpdates}
+            className="btn btn-secondary"
+            style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <RefreshCw size={13} />
+            Check Updates
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {Object.values(updateData?.cores || {}).map((c) => (
+            <div
+              key={c.name}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.75rem 1rem',
+                background: 'rgba(255, 255, 255, 0.02)',
+                border: '1px solid rgba(255, 255, 255, 0.05)',
+                borderRadius: 'var(--radius-sm)',
+              }}
+            >
+              <div>
+                <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{c.name}</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>
+                  {c.current_version ? `v${c.current_version}` : 'Not detected'}
+                </span>
+              </div>
+              {c.update_available ? (
+                <button
+                  type="button"
+                  onClick={onOpenUpdateModal}
+                  style={{
+                    color: '#38bdf8',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    background: 'rgba(56, 189, 248, 0.1)',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    borderRadius: '12px',
+                    padding: '0.2rem 0.6rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  v{c.latest_version} available →
+                </button>
+              ) : (
+                <span style={{ fontSize: '0.75rem', color: '#34d399' }}>✓ Up to date</span>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* System Information */}
