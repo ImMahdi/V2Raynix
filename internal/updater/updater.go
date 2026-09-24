@@ -3,6 +3,7 @@ package updater
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -248,6 +249,53 @@ func unzipExtractFile(zipPath, targetName, destPath string) error {
 	return fmt.Errorf("file %s not found in zip archive", targetName)
 }
 
+var renameFn = os.Rename
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
+}
+
+func atomicMove(src, dst string) error {
+	err := renameFn(src, dst)
+	if err == nil {
+		return nil
+	}
+
+	// Check for cross-device link error (EXDEV)
+	var linkErr *os.LinkError
+	if errors.As(err, &linkErr) {
+		// Fallback: copy to temp file on destination directory then rename
+		tmpDst := dst + ".tmp." + strconv.FormatInt(time.Now().UnixNano(), 10)
+		if copyErr := copyFile(src, tmpDst); copyErr != nil {
+			_ = os.Remove(tmpDst)
+			return fmt.Errorf("cross-device copy failed: %w", copyErr)
+		}
+		_ = os.Chmod(tmpDst, 0755)
+		if renErr := os.Rename(tmpDst, dst); renErr != nil {
+			_ = os.Remove(tmpDst)
+			return fmt.Errorf("cross-device final rename failed: %w", renErr)
+		}
+		_ = os.Remove(src)
+		return nil
+	}
+	return err
+}
+
 func (u *Updater) UpdateCore(coreName string) error {
 	u.mu.Lock()
 	if u.status.IsUpdating {
@@ -315,14 +363,14 @@ func (u *Updater) updateXray(arch string) error {
 	targetBin := "/usr/local/bin/xray"
 	backupBin := targetBin + ".bak"
 	if _, err := os.Stat(targetBin); err == nil {
-		_ = os.Rename(targetBin, backupBin)
+		_ = atomicMove(targetBin, backupBin)
 	}
 
 	// Atomic rename swap
-	if err := os.Rename(tmpBin, targetBin); err != nil {
+	if err := atomicMove(tmpBin, targetBin); err != nil {
 		// Rollback if failed
 		if _, bErr := os.Stat(backupBin); bErr == nil {
-			_ = os.Rename(backupBin, targetBin)
+			_ = atomicMove(backupBin, targetBin)
 		}
 		return fmt.Errorf("failed to swap xray binary: %w", err)
 	}
@@ -334,7 +382,7 @@ func (u *Updater) updateXray(arch string) error {
 	// Verify installed binary
 	if err := exec.Command(targetBin, "-version").Run(); err != nil {
 		// Automated Rollback
-		_ = os.Rename(backupBin, targetBin)
+		_ = atomicMove(backupBin, targetBin)
 		return fmt.Errorf("xray crashed after swap, rolled back: %w", err)
 	}
 
@@ -366,13 +414,13 @@ func (u *Updater) updateTun2socks(arch string) error {
 	targetBin := "/usr/local/bin/tun2socks"
 	backupBin := targetBin + ".bak"
 	if _, err := os.Stat(targetBin); err == nil {
-		_ = os.Rename(targetBin, backupBin)
+		_ = atomicMove(targetBin, backupBin)
 	}
 
 	// Atomic swap
-	if err := os.Rename(tmpBin, targetBin); err != nil {
+	if err := atomicMove(tmpBin, targetBin); err != nil {
 		if _, bErr := os.Stat(backupBin); bErr == nil {
-			_ = os.Rename(backupBin, targetBin)
+			_ = atomicMove(backupBin, targetBin)
 		}
 		return fmt.Errorf("failed to swap tun2socks binary: %w", err)
 	}
