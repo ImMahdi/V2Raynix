@@ -12,7 +12,42 @@ import (
 
 	"github.com/v2raynix/v2raynix/internal/store"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/term"
 )
+
+var (
+	termIsTerminal   = term.IsTerminal
+	termReadPassword = term.ReadPassword
+)
+
+// ReadPasswordSilent reads a password silently without echoing to the terminal.
+// If standard input is not a terminal (e.g. piped or running in automated tests),
+// it falls back to reading from reader.
+func ReadPasswordSilent(prompt string, reader *bufio.Reader) (string, error) {
+	if prompt != "" {
+		fmt.Print(prompt)
+	}
+
+	fd := int(os.Stdin.Fd())
+	if termIsTerminal(fd) {
+		bytePass, err := termReadPassword(fd)
+		fmt.Println()
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(bytePass)), nil
+	}
+
+	if reader != nil {
+		line, err := reader.ReadString('\n')
+		if err != nil && len(line) == 0 {
+			return "", err
+		}
+		return strings.TrimSpace(line), nil
+	}
+
+	return "", fmt.Errorf("no terminal and no reader available")
+}
 
 // ApplyCredentials sets and persists new admin credentials
 func ApplyCredentials(st store.Store, username, password string) error {
@@ -181,14 +216,21 @@ func RunSetup(dataDir string, args []string) error {
 				u = "admin"
 			}
 
-			fmt.Print("  Enter new password (min 4 chars): ")
-			p, _ := reader.ReadString('\n')
-			p = strings.TrimSpace(p)
-			if p == "0" || strings.ToLower(p) == "b" {
+			p1, err := ReadPasswordSilent("  Enter new password (min 4 chars): ", reader)
+			if err != nil || p1 == "0" || strings.ToLower(p1) == "b" {
 				continue
 			}
 
-			if err := ApplyCredentials(st, u, p); err != nil {
+			p2, err := ReadPasswordSilent("  Confirm new password: ", reader)
+			if err != nil || p2 == "0" || strings.ToLower(p2) == "b" {
+				continue
+			}
+
+			if len(p1) < 4 {
+				fmt.Printf("\n  %s[ERROR]%s Password must be at least 4 characters.\n", AnsiRed, AnsiReset)
+			} else if p1 != p2 {
+				fmt.Printf("\n  %s[ERROR]%s Passwords do not match.\n", AnsiRed, AnsiReset)
+			} else if err := ApplyCredentials(st, u, p1); err != nil {
 				fmt.Printf("\n  %s[ERROR]%s %v\n", AnsiRed, AnsiReset, err)
 			} else {
 				fmt.Printf("\n  %s[OK]%s Admin credentials updated (%s). Syncing service...\n", AnsiGreen, AnsiReset, u)
