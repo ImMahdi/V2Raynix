@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/v2raynix/v2raynix/releases"><img src="https://img.shields.io/badge/версия-v0.9.0--beta-orange.svg?style=flat-square" alt="Версия"></a>
+  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/версия-v0.9.0--beta-orange.svg?style=flat-square" alt="Версия"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-%3E%3D1.23-blue.svg?style=flat-square" alt="Версия Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/лицензия-MIT-green.svg?style=flat-square" alt="Лицензия"></a>
   <img src="https://img.shields.io/badge/платформа-Linux%20(amd64%20%7C%20arm64)-purple.svg?style=flat-square" alt="Платформа">
@@ -47,7 +47,7 @@
 Установите и запустите V2Raynix на любом дистрибутиве Linux (**Ubuntu**, **Debian**, **CentOS**, **Fedora** или **Arch Linux**) с помощью **одной команды** в терминале — **без установки Go, Node.js и необходимости компиляции**:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/v2raynix/v2raynix/master/scripts/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/master/scripts/install.sh)
 ```
 
 ### 🪄 Что скрипт выполняет автоматически:
@@ -208,7 +208,7 @@ Flags:
 
 ```bash
 # 1. Клонирование репозитория
-git clone https://github.com/v2raynix/v2raynix.git
+git clone https://github.com/ImMahdi/V2Raynix.git
 cd v2raynix
 
 # 2. Сборка React фронтенда

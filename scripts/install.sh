@@ -150,7 +150,7 @@ ensure_v2raynix() {
         cp -f ./v2raynix /usr/local/bin/v2raynix
     else
         echo -e "${YELLOW}* Fetching precompiled V2Raynix binary for ${GOARCH}...${NC}"
-        local release_base="https://github.com/v2raynix/v2raynix/releases/latest/download"
+        local release_base="https://github.com/ImMahdi/V2Raynix/releases/latest/download"
         local archive_name="v2raynix-linux-${GOARCH}.tar.gz"
         local direct_bin_name="v2raynix-linux-${GOARCH}"
         local tmp_archive="/tmp/${archive_name}"
