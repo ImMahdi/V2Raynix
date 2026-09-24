@@ -210,29 +210,28 @@ Flags:
 
 V2Raynix is an independent, free, and open-source project dedicated to internet freedom and open communication. If this tool helps you maintain reliable, secure connectivity, please consider supporting future maintenance and development!
 
-### Cryptocurrency Donation Addresses
+### 📋 Wallet Addresses
 
-| Network / Cryptocurrency | Address | QR Code |
-| :--- | :--- | :---: |
-| **BNB Smart Chain (BEP20)** | `0x726524eF2Bf606f12829C7724a37196E5fE00F44` | [View QR](repo_assets/qr-bnb.png) |
-| **Tron (TRC20)** | `TYkdrBjmJEMxXbxS6pwCujHvB18AS9WZ57` | [View QR](repo_assets/qr-trx.png) |
-| **Bitcoin (BTC)** | `bc1qjyjat944wz466l3pz27953gfl69ey2wf66r2x4` | [View QR](repo_assets/qr-btc.png) |
-| **Solana (SOL)** | `GevJAdW3x8Y8sqgDmYQf6VXGsoNny3hh8gFJthknC61W` | [View QR](repo_assets/qr-sol.png) |
-| **Ethereum (ERC20)** | `0x726524eF2Bf606f12829C7724a37196E5fE00F44` | [View QR](repo_assets/qr-eth.png) |
+| Network / Cryptocurrency | Address |
+| :--- | :--- |
+| **BNB Smart Chain (BEP20)** | `0x726524eF2Bf606f12829C7724a37196E5fE00F44` |
+| **Tron (TRC20)** | `TYkdrBjmJEMxXbxS6pwCujHvB18AS9WZ57` |
+| **Bitcoin (BTC)** | `bc1qjyjat944wz466l3pz27953gfl69ey2wf66r2x4` |
+| **Solana (SOL)** | `GevJAdW3x8Y8sqgDmYQf6VXGsoNny3hh8gFJthknC61W` |
+| **Ethereum (ERC20)** | `0x726524eF2Bf606f12829C7724a37196E5fE00F44` |
 
 <br/>
 
-<p align="center">
-  <img src="repo_assets/qr-bnb.png" width="145" alt="BNB Smart Chain QR" title="BNB Smart Chain (BEP20)" />
-  &nbsp;&nbsp;
-  <img src="repo_assets/qr-trx.png" width="145" alt="Tron QR" title="Tron (TRC20)" />
-  &nbsp;&nbsp;
-  <img src="repo_assets/qr-btc.png" width="145" alt="Bitcoin QR" title="Bitcoin (BTC)" />
-  &nbsp;&nbsp;
-  <img src="repo_assets/qr-sol.png" width="145" alt="Solana QR" title="Solana (SOL)" />
-  &nbsp;&nbsp;
-  <img src="repo_assets/qr-eth.png" width="145" alt="Ethereum QR" title="Ethereum (ERC20)" />
-</p>
+### 📱 Scan to Donate (QR Codes)
+
+<div align="center">
+
+| **BNB (BEP20)** | **Tron (TRC20)** | **Bitcoin (BTC)** | **Solana (SOL)** | **Ethereum (ERC20)** |
+| :---: | :---: | :---: | :---: | :---: |
+| <a href="repo_assets/qr-bnb.png"><img src="repo_assets/qr-bnb.png" width="95" alt="BNB" /></a> | <a href="repo_assets/qr-trx.png"><img src="repo_assets/qr-trx.png" width="95" alt="TRX" /></a> | <a href="repo_assets/qr-btc.png"><img src="repo_assets/qr-btc.png" width="95" alt="BTC" /></a> | <a href="repo_assets/qr-sol.png"><img src="repo_assets/qr-sol.png" width="95" alt="SOL" /></a> | <a href="repo_assets/qr-eth.png"><img src="repo_assets/qr-eth.png" width="95" alt="ETH" /></a> |
+| `0x7265...0F44` | `TYkd...WZ57` | `bc1q...r2x4` | `GevJ...C61W` | `0x7265...0F44` |
+
+</div>
 
 ---
 

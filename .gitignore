@@ -28,6 +28,8 @@ xray.log
 # IDE & OS
 .vscode/
 .idea/
+.agents/
+docs/
 .DS_Store
 Thumbs.db
 
