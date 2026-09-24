@@ -47,7 +47,7 @@
 Install and start V2Raynix on any Linux server (**Ubuntu**, **Debian**, **CentOS**, **Fedora**, or **Arch Linux**) with a single command — **no Go, no Node.js, and zero build steps required**:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/master/scripts/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh)
 ```
 
 ### 🪄 What the Installer Does Automatically:

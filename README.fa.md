@@ -47,7 +47,7 @@
 نصب و راه‌اندازی V2Raynix روی تمامی توزیع‌های لینوکس (**Ubuntu**, **Debian**, **CentOS**, **Fedora**, **Arch Linux**) تنها با اجرای **یک دستور** در ترمینال بدون نیاز به نصب Go، کامپایل یا پیش‌نیازهای پیچیده:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/master/scripts/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh)
 ```
 
 ### 🪄 مراحل انجام‌شده توسط اسکریپت نصب خودکار:

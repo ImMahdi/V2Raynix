@@ -47,7 +47,7 @@
 Установите и запустите V2Raynix на любом дистрибутиве Linux (**Ubuntu**, **Debian**, **CentOS**, **Fedora** или **Arch Linux**) с помощью **одной команды** в терминале — **без установки Go, Node.js и необходимости компиляции**:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/master/scripts/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh)
 ```
 
 ### 🪄 Что скрипт выполняет автоматически:

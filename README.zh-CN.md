@@ -47,7 +47,7 @@
 在任何 Linux 服务器（**Ubuntu**、**Debian**、**CentOS**、**Fedora** 或 **Arch Linux**）上仅需**执行单条命令**即可快速部署并自动启动 V2Raynix —— **无需预装 Go、Node.js，也无需任何手动编译步骤**：
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/master/scripts/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh)
 ```
 
 ### 🪄 安装脚本自动执行的操作：
