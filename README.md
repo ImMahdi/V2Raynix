@@ -1,105 +1,249 @@
-# V2Raynix 🛡️
+<p align="center">
+  <img src="repo_assets/v2raynix-banner.png" alt="V2Raynix Banner" width="440" />
+</p>
 
-**V2Raynix** is a high-performance, single-binary Linux daemon and modern Web UI for V2Ray / Xray proxy configurations. It provides full-system network tunneling via `tun2socks`, zero-downtime multi-config switching, intelligent policy routing, and an automated 2-minute **Safe Mode** auto-rollback failsafe.
+<h1 align="center">V2Raynix</h1>
+
+<p align="center">
+  <b>Next-Generation Full-System Linux Network Tunnel & Smart Proxy Manager</b><br/>
+  <i>Engineered with Go, Xray-core, tun2socks, Kernel Policy Routing, and an Embedded React Web Dashboard</i>
+</p>
+
+<p align="center">
+  <a href="https://github.com/v2raynix/v2raynix/releases"><img src="https://img.shields.io/badge/version-v0.9.0--beta-orange.svg?style=flat-square" alt="Version"></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/go-%3E%3D1.23-blue.svg?style=flat-square" alt="Go Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/platform-Linux%20(amd64%20%7C%20arm64)-purple.svg?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/status-Active%20Beta-success.svg?style=flat-square" alt="Status">
+</p>
+
+<p align="center">
+  <a href="#-key-features">Key Features</a> •
+  <a href="#-architecture">Architecture</a> •
+  <a href="#-quick-installation-linux">Quick Install</a> •
+  <a href="#-interactive-terminal-tui">Terminal TUI</a> •
+  <a href="#-web-dashboard">Web Dashboard</a> •
+  <a href="#-building-from-source">Build from Source</a> •
+  <a href="#-support--donations">Donations</a> •
+  <a href="#-license">License</a>
+</p>
 
 ---
 
-## Key Features
+## 💡 Why V2Raynix?
 
-- **🚀 Full Server Tunneling:** Routes all Linux server network traffic through a virtual `tun0` interface via `tun2socks`.
-- **🛡️ SSH & Web UI Anti-Lockout:** Automatically detects your SSH session, incoming IP, and local ports, routing them directly through the physical gateway so you never lose remote administrative access.
-- **⏱️ Network Safe Mode (Commit Confirmed):** Whenever network routes change, a 120-second countdown begins. If not confirmed, changes automatically revert to an un-tunneled safe state.
-- **⚡ Multi-Config Storage:** Store and switch between unlimited configurations (VLESS, VMess, Trojan, Shadowsocks, or custom Xray JSON) with one click.
-- **📊 Real-Time Latency Testing:** Test individual or batch TCP pings and real HTTP handshake delays.
-- **🌐 Custom Routing Policies:** Visual rule editor to direct, proxy, or block specific domains and IPs, with one-click presets for bypassing local services and Iranian banking/government domains.
-- **📦 Single Binary Deployment:** The complete React Web UI is compiled directly into the Go executable (`go:embed`). No Node.js, Nginx, or external databases needed on the server.
+Managing proxy clients on headless Linux servers has traditionally been cumbersome, brittle, and dangerous. Standard command-line tools often require writing complex JSON configs manually, lack unified TUN device management, or worse—alter default network routing tables in ways that **sever active SSH sessions**, locking administrators out of their own cloud instances.
+
+**V2Raynix** solves these challenges by combining:
+1. **Zero-Lockout Kernel Policy Routing:** Automatic detection of SSH ports, incoming administration IPs, and default gateways ensures your management connections remain entirely untouched.
+2. **120-Second Network Safe Mode:** Route alterations automatically initiate a countdown failsafe; if unconfirmed, routing rolls back cleanly to prevent network blackholes.
+3. **Single-Binary Zero-Dependency Deployment:** The full React administration panel is compiled directly into the Go executable (`go:embed`). No Node.js runtime, Nginx reverse proxy, or external databases are required on your server.
+4. **Interactive Terminal Setup (TUI):** A color-coded, border-aligned ANSI terminal console for quick credential management (with Linux `sudo`-style silent password masking and confirmation), port reconfigurations, and systemd supervision.
 
 ---
 
-## Quick Installation on Linux
+## 🚀 Key Features
 
-Run the following command on your Debian, Ubuntu, CentOS, or Arch server as `root`:
+- **🌐 Global Server Tunneling (`tun2socks`):** Routes all outgoing Linux TCP and UDP traffic transparently through a virtual `tun0` adapter into your active proxy node.
+- **🛡️ 2-Tier Anti-Lockout Defense:** Automatic policy routing rules ensure SSH (port 22/custom), local web management traffic, and direct connections bypass `tun0` directly to the physical gateway.
+- **⏱️ Automated Safe Mode Failsafe:** A 120-second commit-confirmation timer guards against misconfigured routes, automatically rolling back changes before access is lost.
+- **⚡ Multi-Protocol Support:**
+  - **VLESS:** Supports `xhttp`, `reality`, `xtls-rprx-vision`, `ws`, `grpc`, and `tcp`.
+  - **VMess:** Full AEAD support with WebSocket, TCP, and camouflage headers.
+  - **Trojan:** Standard TLS and WebSocket configurations.
+  - **Shadowsocks:** Modern 2022 AEAD ciphers as well as legacy stream methods.
+- **🧠 Smart Policy Routing & GeoData Normalization:** Visual domain and IP rule routing (Direct / Proxy / Block). Automatically normalizes aliases (e.g., `geosite:ir` / `geosite:iran` $\to$ `geosite:category-ir`, `geoip:ir`) to guarantee compatibility with official `geosite.dat` and `geoip.dat` assets without engine syntax crashes.
+- **📊 Real-Time Node Diagnostics:** Dual-metric latency analysis supporting both raw TCP pings and true HTTP end-to-end handshake delays.
+- **🖥️ Silent-Input Terminal TUI:** Interactive terminal setup menu (`v2raynix setup`) with silent password entry (hidden characters without echo) and double-confirmation checks.
+- **🔄 In-Panel Core Engine Updater:** Inspect and update upstream `Xray-core` and `tun2socks` binaries directly from the web interface with automated checksum verification and atomic rollbacks.
+
+---
+
+## 🏛️ Architecture
+
+```
+[ Outgoing Server Applications & System Traffic ]
+                      │
+                      ▼
+   ┌─────────────────────────────────────┐
+   │    Kernel Policy Routing Rules      │
+   └──────────────────┬──────────────────┘
+                      │
+       ┌──────────────┴──────────────┐
+       │ (SSH / Web Port / Dest IP)  │ (All Default Traffic)
+       ▼                             ▼
+┌──────────────┐              ┌──────────────┐
+│ Physical Eth │              │   tun0 Net   │
+│   Gateway    │              │  Interface   │
+└──────────────┘              └──────┬───────┘
+                                     │
+                                     ▼
+                              ┌──────────────┐
+                              │  tun2socks   │
+                              └──────┬───────┘
+                                     │ (SOCKS5 127.0.0.1:10808)
+                                     ▼
+                              ┌──────────────┐
+                              │  Xray Core   │
+                              └──────┬───────┘
+                                     │ (VLESS / VMess / Trojan / SS)
+                                     ▼
+                        [ Remote Proxy Server ]
+```
+
+---
+
+## 📦 Quick Installation (Linux)
+
+To install V2Raynix as a managed `systemd` background service on **Debian**, **Ubuntu**, **CentOS**, or **Arch Linux**, execute the following command as `root`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/v2raynix/v2raynix/master/scripts/install.sh | bash
 ```
 
-Once installed, navigate to:
+### What the Installer Does Automatically:
+1. Installs core dependencies (`curl`, `unzip`, `iptables`, `iproute2`, `ca-certificates`).
+2. Installs the latest official **Xray-core** and **tun2socks** binaries alongside GeoIP / GeoSite databases.
+3. Downloads and places the compiled `v2raynix` binary into `/usr/local/bin/v2raynix`.
+4. Configures system firewall rules (`ufw` / `firewalld`) to ensure web access on port `2080`.
+5. Creates, enables, and launches the `v2raynix.service` systemd daemon.
+
+Once the script finishes, open your browser and navigate to:
 ```
 http://<your-server-ip>:2080
 ```
 - **Default Username:** `admin`
-- **Default Password:** `admin` (Change this in the Settings tab immediately)
+- **Default Password:** `admin` *(You will be prompted to change credentials upon first login or via terminal setup)*
 
 ---
 
-## Architecture
+## 🖥️ Interactive Terminal TUI
 
+Need to reset your credentials, change listening ports, or check service health directly from SSH without opening a browser? Simply run:
+
+```bash
+sudo v2raynix setup
 ```
-[ Incoming / Outgoing Linux Traffic ]
-               │
-               ▼
-   [ Policy Routing Rules ] ──(SSH Port 22 / Web UI / Proxy IP)──> [ Physical Gateway eth0 ]
-               │
-          (All Else)
-               │
-               ▼
-       [ Interface tun0 ]
-               │
-               ▼
-         [ tun2socks ]
-               │
-               ▼
-        [ Xray Core ] ────(VLESS / VMess / Trojan / SS)────> [ Remote Proxy Server ]
+
+```text
+┌────────────────────────────────────────────────────────────┐
+│                    V2RAYNIX SERVER SETUP                   │
+├────────────────────────────────────────────────────────────┤
+│  Service Status : ● Active (Running)                       │
+│  Web Management : http://127.0.0.1:2080                    │
+├────────────────────────────────────────────────────────────┤
+│  [1] Change / Reset Admin Credentials                      │
+│  [2] Change Web Panel Listening Port                       │
+│  [3] Manage V2Raynix Service (Start / Stop / Restart)      │
+│  [4] View Server Status & Diagnostics                      │
+│  [0] Exit Setup                                            │
+└────────────────────────────────────────────────────────────┘
 ```
+
+> **Security Note:** In option `[1]`, password inputs are completely masked (silent input with no characters or asterisks echoed to the screen, exactly like Linux `sudo`), and a confirmation re-entry is required before any changes are written.
 
 ---
 
-## Building from Source
+## 🌐 Web Dashboard
+
+The embedded web interface provides a reactive, modern dashboard with dark-mode glassmorphic aesthetics:
+
+- **Dashboard:** Monitor real-time system network transfer speeds, active connection uptime, virtual TUN adapter status, and safe mode countdown.
+- **Configurations:** Import nodes via standard share links (`vless://`, `vmess://`, `trojan://`, `ss://`) or raw JSON. Run batch pings and real HTTP latency tests across all nodes.
+- **Smart Routing:** Create granular policy rules (Domain / IP / CIDR) targeting Direct, Proxy, or Block outbounds. Includes one-click presets for bypassing domestic Iranian services (`geosite:category-ir`, `geoip:ir`) and blocking ad trackers (`geosite:category-ads-all`).
+- **Live Logs:** Real-time log inspector streaming kernel routing events, daemon state transitions, and Xray core output.
+- **Settings & Core Updater:** Configure listening ports, Safe Mode timeouts, admin passwords, and update underlying Xray / tun2socks cores with single-click zero-downtime execution.
+
+---
+
+## 🛠️ Building from Source
 
 ### Prerequisites
-- Go 1.22+
-- Node.js 18+ and npm
+- **Go:** Version 1.23 or newer
+- **Node.js & npm:** Version 18+ (for compiling the embedded React frontend)
+- **Make / Bash:** Standard build utilities
 
-### Build Steps
+### Step-by-Step Compilation
 
-1. **Build Frontend:**
-   ```bash
-   cd web
-   npm install
-   npm run build
-   cd ..
-   ```
+```bash
+# 1. Clone the repository
+git clone https://github.com/v2raynix/v2raynix.git
+cd v2raynix
 
-2. **Compile Go Binary:**
-   ```bash
-   go build -ldflags="-s -w" -o bin/v2raynix ./cmd/v2raynix
-   ```
+# 2. Build the React SPA frontend
+cd web
+npm install
+npm run build
+cd ..
 
-3. **Run Locally (Mock Mode):**
-   ```bash
-   ./bin/v2raynix -port 2080 -mock
-   ```
+# 3. Compile the single standalone Go binary
+go build -ldflags="-s -w" -o bin/v2raynix ./cmd/v2raynix
+
+# 4. Run locally in simulation (mock) mode
+./bin/v2raynix -port 2080 -mock
+```
 
 ---
 
-## CLI Options
+## ⚙️ CLI Reference
 
-```
-Usage of v2raynix:
+```text
+Usage: v2raynix [flags]
+       v2raynix setup [subcommand flags]
+
+Flags:
   -port int
-        Web UI listening port (default 2080)
+        Web UI and REST API listening port (default: 2080)
   -data-dir string
-        Path to data directory (default: /etc/v2raynix or ./data)
+        Path to state directory (default: /etc/v2raynix or ./data)
   -init-password string
-        Set or reset the admin password
+        Directly initialize or override admin password
   -mock
-        Run in simulation mode (without modifying system network interfaces)
+        Run in simulation mode without altering kernel interfaces or iptables
   -version
-        Show V2Raynix version and exit
+        Print V2Raynix version and exit
 ```
 
 ---
 
-## License
-MIT License
+## 💖 Support & Donations
+
+V2Raynix is an independent, free, and open-source project dedicated to internet freedom and open communication. If this tool helps you maintain reliable, secure connectivity, please consider supporting future maintenance and development!
+
+### Cryptocurrency Donation Addresses
+
+| Network / Cryptocurrency | Address | QR Code |
+| :--- | :--- | :---: |
+| **BNB Smart Chain (BEP20)** | `0x726524eF2Bf606f12829C7724a37196E5fE00F44` | [View QR](repo_assets/qr-bnb.png) |
+| **Tron (TRC20)** | `TYkdrBjmJEMxXbxS6pwCujHvB18AS9WZ57` | [View QR](repo_assets/qr-trx.png) |
+| **Bitcoin (BTC)** | `bc1qjyjat944wz466l3pz27953gfl69ey2wf66r2x4` | [View QR](repo_assets/qr-btc.png) |
+| **Solana (SOL)** | `GevJAdW3x8Y8sqgDmYQf6VXGsoNny3hh8gFJthknC61W` | [View QR](repo_assets/qr-sol.png) |
+| **Ethereum (ERC20)** | `0x726524eF2Bf606f12829C7724a37196E5fE00F44` | [View QR](repo_assets/qr-eth.png) |
+
+<br/>
+
+<p align="center">
+  <img src="repo_assets/qr-bnb.png" width="145" alt="BNB Smart Chain QR" title="BNB Smart Chain (BEP20)" />
+  &nbsp;&nbsp;
+  <img src="repo_assets/qr-trx.png" width="145" alt="Tron QR" title="Tron (TRC20)" />
+  &nbsp;&nbsp;
+  <img src="repo_assets/qr-btc.png" width="145" alt="Bitcoin QR" title="Bitcoin (BTC)" />
+  &nbsp;&nbsp;
+  <img src="repo_assets/qr-sol.png" width="145" alt="Solana QR" title="Solana (SOL)" />
+  &nbsp;&nbsp;
+  <img src="repo_assets/qr-eth.png" width="145" alt="Ethereum QR" title="Ethereum (ERC20)" />
+</p>
+
+---
+
+## 🔒 Security & Disclaimers
+
+- **Root Privileges:** Full-system network routing (`tun0`, `iptables`, `ip route`) requires administrative privileges (`CAP_NET_ADMIN`, `CAP_NET_BIND_SERVICE`). The background daemon drops unnecessary capabilities where applicable.
+- **Disclaimer:** This software is provided "as is", without warranty of any kind. Users are responsible for complying with local telecommunication regulations and laws when deploying proxy tunnels.
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
+Feel free to contribute, open issues, and submit pull requests!
