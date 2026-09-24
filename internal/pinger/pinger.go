@@ -170,7 +170,7 @@ func TestConfigRealDelay(ctx context.Context, cfg *store.ConfigItem, timeout tim
 	if err != nil {
 		// Fallback for direct socks proxy testing if protocol is socks
 		if cfg.Protocol == "socks" {
-			dur, err := RealHTTPDelay(fmt.Sprintf("%s:%d", cfg.Server, cfg.Port), "http://cp.cloudflare.com", timeout)
+			dur, err := RealHTTPDelay(net.JoinHostPort(cfg.Server, strconv.Itoa(cfg.Port)), "http://cp.cloudflare.com", timeout)
 			if err != nil {
 				return -1, err
 			}
