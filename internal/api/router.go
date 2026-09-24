@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/v2raynix/v2raynix/internal/core"
 	"github.com/v2raynix/v2raynix/internal/pinger"
 	"github.com/v2raynix/v2raynix/internal/store"
+	"github.com/v2raynix/v2raynix/internal/updater"
 )
 
 const (
@@ -27,6 +29,7 @@ type Dependencies struct {
 	Supervisor *core.Supervisor
 	JWTSecret  []byte
 	StaticFS   fs.FS
+	Updater    *updater.Updater
 }
 
 type Router struct {
@@ -36,6 +39,9 @@ type Router struct {
 }
 
 func NewRouter(deps *Dependencies) http.Handler {
+	if deps.Updater == nil {
+		deps.Updater = updater.NewUpdater("/etc/v2raynix")
+	}
 	r := &Router{
 		deps:         deps,
 		mux:          http.NewServeMux(),
@@ -90,6 +96,11 @@ func (r *Router) registerRoutes() {
 
 	// System Logs
 	r.mux.HandleFunc("GET /api/system/logs", r.requireAuth(r.handleGetLogs))
+
+	// System Updates
+	r.mux.HandleFunc("GET /api/system/updates", r.requireAuth(r.handleGetUpdates))
+	r.mux.HandleFunc("POST /api/system/check-updates", r.requireAuth(r.handleCheckUpdates))
+	r.mux.HandleFunc("POST /api/system/update-core", r.requireAuth(r.handleUpdateCore))
 
 	// Static SPA Serving (if provided)
 	if r.deps.StaticFS != nil {
@@ -574,3 +585,46 @@ func (rl *loginRateLimiter) reset(ip string) {
 	defer rl.mu.Unlock()
 	delete(rl.attempts, ip)
 }
+
+func (r *Router) handleGetUpdates(w http.ResponseWriter, req *http.Request) {
+	status := r.deps.Updater.GetStatus()
+	if len(status.Cores) == 0 {
+		status, _ = r.deps.Updater.CheckUpdates(false)
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (r *Router) handleCheckUpdates(w http.ResponseWriter, req *http.Request) {
+	status, err := r.deps.Updater.CheckUpdates(true)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (r *Router) handleUpdateCore(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		Core string `json:"core"`
+	}
+	if err := decodeJSON(w, req, defaultMaxBodyBytes, &body, "invalid request body"); err != nil {
+		return
+	}
+
+	body.Core = strings.ToLower(strings.TrimSpace(body.Core))
+	if body.Core != "xray" && body.Core != "tun2socks" && body.Core != "all" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid core: must be 'xray', 'tun2socks', or 'all'"})
+		return
+	}
+
+	err := r.deps.Updater.UpdateCore(body.Core)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": fmt.Sprintf("%s core updated successfully", body.Core),
+	})
+}
+

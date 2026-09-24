@@ -482,4 +482,62 @@ func TestAPI_ConfigTestEndpoints(t *testing.T) {
 	}
 }
 
+func TestAPI_SystemUpdateEndpoints(t *testing.T) {
+	router, tempDir := setupTestRouter(t)
+	defer os.RemoveAll(tempDir)
+
+	// Unauthorized test
+	req := httptest.NewRequest(http.MethodGet, "/api/system/updates", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 Unauthorized without token, got %d", rec.Code)
+	}
+
+	// Login to get token
+	loginBody, _ := json.Marshal(map[string]string{
+		"username": "admin",
+		"password": "admin123",
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login failed: %d", rec.Code)
+	}
+
+	var authResp map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &authResp)
+	token := authResp["token"]
+
+	// GET /api/system/updates -> 200 OK
+	req = httptest.NewRequest(http.MethodGet, "/api/system/updates", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for GET /api/system/updates, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// POST /api/system/check-updates -> 200 OK
+	req = httptest.NewRequest(http.MethodPost, "/api/system/check-updates", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for POST /api/system/check-updates, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// POST /api/system/update-core with invalid core -> 400 Bad Request
+	badCoreBody, _ := json.Marshal(map[string]string{"core": "invalid-engine"})
+	req = httptest.NewRequest(http.MethodPost, "/api/system/update-core", bytes.NewReader(badCoreBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request for invalid core, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+
 
