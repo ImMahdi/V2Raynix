@@ -246,6 +246,9 @@ func buildProxyOutbound(cfg *store.ConfigItem) (map[string]interface{}, error) {
 
 	case "vmess":
 		b64 := strings.TrimPrefix(cfg.RawURL, "vmess://")
+		if idx := strings.IndexAny(b64, "#?"); idx != -1 {
+			b64 = b64[:idx]
+		}
 		decoded, err := decodeBase64(b64)
 		if err != nil {
 			return nil, err

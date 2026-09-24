@@ -394,6 +394,14 @@ func TestGenerateXrayConfig_RealityAndVisionValidation(t *testing.T) {
 	}
 }
 
-
-
-
+func TestGenerateXrayConfig_VMessWithRemarkFragment(t *testing.T) {
+	link := "vmess://eyJhZGQiOiIxLjIuMy40IiwicG9ydCI6NDQzLCJpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsImFpZCI6MCwibmV0Ijoid3MiLCJ0eXBlIjoibm9uZSIsInBzIjoidGVzdCJ9#MyCustomServer"
+	item, err := configmgr.ParseShareLink(link)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
+	}
+	_, err = configmgr.GenerateXrayConfig(item, nil, 10808, 10809)
+	if err != nil {
+		t.Fatalf("GenerateXrayConfig failed with fragment: %v", err)
+	}
+}
