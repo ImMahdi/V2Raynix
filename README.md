@@ -17,6 +17,13 @@
   <img src="https://img.shields.io/badge/status-Active%20Beta-success.svg?style=flat-square" alt="Status">
 </p>
 
+<p align="center">
+  <b>English</b> •
+  <a href="README.fa.md">🇮🇷 <b>فارسی</b></a> •
+  <a href="README.zh-CN.md">🇨🇳 <b>简体中文</b></a> •
+  <a href="README.ru.md">🇷🇺 <b>Русский</b></a>
+</p>
+
 ---
 
 ## 📑 Table of Contents
