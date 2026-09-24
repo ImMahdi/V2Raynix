@@ -96,5 +96,10 @@ export const api = {
 
   // Logs
   getLogs: (options = {}) => request('/system/logs', options),
+
+  // System Updates
+  getSystemUpdates: () => request('/system/updates'),
+  checkSystemUpdates: () => request('/system/check-updates', { method: 'POST' }),
+  updateCore: (core) => request('/system/update-core', { method: 'POST', body: JSON.stringify({ core }) }),
 };
 

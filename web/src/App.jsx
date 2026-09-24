@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import SafeModeModal from './components/SafeModeModal';
+import UpdateCoreModal from './components/UpdateCoreModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import DashboardPage from './pages/DashboardPage';
 import ConfigsPage from './pages/ConfigsPage';
@@ -19,6 +20,9 @@ export default function App() {
   const [configs, setConfigs] = useState([]);
   const [routingRules, setRoutingRules] = useState([]);
   const [toggling, setToggling] = useState(false);
+
+  const [updateData, setUpdateData] = useState(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
   // Check initial login session
   useEffect(() => {
@@ -48,6 +52,31 @@ export default function App() {
         setCheckingAuth(false);
       });
   }, []);
+
+  const fetchUpdates = async () => {
+    try {
+      const data = await api.getSystemUpdates();
+      setUpdateData(data);
+    } catch (err) {
+      console.warn('Could not fetch updates:', err);
+    }
+  };
+
+  const handleCheckUpdates = async () => {
+    try {
+      const data = await api.checkSystemUpdates();
+      setUpdateData(data);
+      setIsUpdateModalOpen(true);
+    } catch (err) {
+      alert(err.message || 'Failed to check updates');
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchUpdates();
+    }
+  }, [user]);
 
   // Poll tunnel status and fetch data with exponential backoff & jitter (WEB-01)
   useEffect(() => {
@@ -215,13 +244,20 @@ export default function App() {
     return <LoginPage onLoginSuccess={setUser} />;
   }
 
+  const hasUpdate = Boolean(
+    updateData &&
+    Object.values(updateData.cores || {}).some(c => c.update_available)
+  );
+
   return (
     <div className="app-container">
       <Navbar 
         activeTab={activeTab} 
         onSelectTab={setActiveTab} 
         user={user} 
-        onLogout={handleLogout} 
+        onLogout={handleLogout}
+        hasUpdate={hasUpdate}
+        onOpenUpdateModal={() => setIsUpdateModalOpen(true)}
       />
 
       <main className="main-content">
@@ -260,7 +296,13 @@ export default function App() {
 
           {activeTab === 'logs' && <LogsPage />}
 
-          {activeTab === 'settings' && <SettingsPage />}
+          {activeTab === 'settings' && (
+            <SettingsPage 
+              updateData={updateData}
+              onCheckUpdates={handleCheckUpdates}
+              onOpenUpdateModal={() => setIsUpdateModalOpen(true)}
+            />
+          )}
         </ErrorBoundary>
       </main>
 
@@ -272,6 +314,14 @@ export default function App() {
           onRollback={handleRollbackSafeMode}
         />
       )}
+
+      {/* Core Engine Update Modal */}
+      <UpdateCoreModal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
+        updateData={updateData}
+        onRefreshUpdates={fetchUpdates}
+      />
     </div>
   );
 }
