@@ -197,3 +197,30 @@ func TestPinger_BatchRealTestContext(t *testing.T) {
 	}
 }
 
+func TestIPv6Formatting(t *testing.T) {
+	testCases := []struct {
+		name string
+		host string
+		port int
+	}{
+		{name: "IPv6 Global", host: "2001:db8::1", port: 1080},
+		{name: "IPv6 Loopback", host: "::1", port: 1080},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &store.ConfigItem{
+				ID:       "ipv6-test",
+				Protocol: "socks",
+				Server:   tc.host,
+				Port:     tc.port,
+			}
+
+			_, err := pinger.TestConfigRealDelay(context.Background(), cfg, 50*time.Millisecond)
+			if err != nil && strings.Contains(err.Error(), "too many colons in address") {
+				t.Fatalf("IPv6 address %s was not properly bracketed in socket target string: %v", tc.host, err)
+			}
+		})
+	}
+}
+
