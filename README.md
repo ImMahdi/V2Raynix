@@ -1,8 +1,8 @@
-<p align="center">
-  <img src="repo_assets/v2raynix-banner.png" alt="V2Raynix Banner" width="440" />
-</p>
-
 <h1 align="center">V2Raynix</h1>
+
+<p align="center">
+  <img src="repo_assets/v2raynix-banner.png" alt="V2Raynix Banner" width="720" />
+</p>
 
 <p align="center">
   <b>Next-Generation Full-System Linux Network Tunnel & Smart Proxy Manager</b><br/>
@@ -17,16 +17,47 @@
   <img src="https://img.shields.io/badge/status-Active%20Beta-success.svg?style=flat-square" alt="Status">
 </p>
 
-<p align="center">
-  <a href="#-key-features">Key Features</a> •
-  <a href="#-architecture">Architecture</a> •
-  <a href="#-quick-installation-linux">Quick Install</a> •
-  <a href="#-interactive-terminal-tui">Terminal TUI</a> •
-  <a href="#-web-dashboard">Web Dashboard</a> •
-  <a href="#-building-from-source">Build from Source</a> •
-  <a href="#-support--donations">Donations</a> •
-  <a href="#-license">License</a>
-</p>
+---
+
+## 📑 Table of Contents
+
+- [⚡ Single-Command Installation](#-single-command-installation)
+- [💡 Why V2Raynix?](#-why-v2raynix)
+- [🚀 Key Features](#-key-features)
+- [🏛️ System Architecture](#-system-architecture)
+- [🖥️ Interactive Terminal TUI](#-interactive-terminal-tui)
+- [🌐 Modern Web Dashboard](#-web-dashboard)
+- [⚙️ CLI Reference](#-cli-reference)
+- [🛠️ Building from Source (Optional)](#-building-from-source-optional)
+- [💖 Support & Donations](#-support--donations)
+- [🔒 Security & Disclaimers](#-security--disclaimers)
+- [📄 License](#-license)
+
+---
+
+## ⚡ Single-Command Installation
+
+Install and start V2Raynix on any Linux server (**Ubuntu**, **Debian**, **CentOS**, **Fedora**, or **Arch Linux**) with a single command — **no Go, no Node.js, and zero build steps required**:
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/v2raynix/v2raynix/master/scripts/install.sh)
+```
+
+### 🪄 What the Installer Does Automatically:
+1. **Detects Architecture:** Identifies `x86_64` (`amd64`) or `aarch64` (`arm64`) automatically.
+2. **Installs System Dependencies:** Ensures `curl`, `unzip`, `iptables`, `iproute2`, and `ca-certificates` are installed.
+3. **Deploys Core Engines:** Downloads and configures the latest official **Xray-core** and **tun2socks** binaries alongside up-to-date **GeoIP** and **GeoSite** routing databases.
+4. **Installs Standalone Binary:** Installs the pre-built `v2raynix` binary with embedded web dashboard directly into `/usr/local/bin/v2raynix`.
+5. **Configures Firewall:** Opens web management port `2080` in `ufw` or `firewalld`.
+6. **Creates & Starts Service:** Sets up the `v2raynix.service` systemd daemon and immediately starts it.
+
+### 🌐 Accessing the Panel:
+Once installation finishes, open your browser:
+```text
+http://<your-server-ip>:2080
+```
+- **Default Username:** `admin`
+- **Default Password:** `admin` *(You will be prompted to update credentials upon first login or via the terminal menu)*
 
 ---
 
@@ -59,9 +90,9 @@ Managing proxy clients on headless Linux servers has traditionally been cumberso
 
 ---
 
-## 🏛️ Architecture
+## 🏛️ System Architecture
 
-```
+```text
 [ Outgoing Server Applications & System Traffic ]
                       │
                       ▼
@@ -90,30 +121,6 @@ Managing proxy clients on headless Linux servers has traditionally been cumberso
                                      ▼
                         [ Remote Proxy Server ]
 ```
-
----
-
-## 📦 Quick Installation (Linux)
-
-To install V2Raynix as a managed `systemd` background service on **Debian**, **Ubuntu**, **CentOS**, or **Arch Linux**, execute the following command as `root`:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/v2raynix/v2raynix/master/scripts/install.sh | bash
-```
-
-### What the Installer Does Automatically:
-1. Installs core dependencies (`curl`, `unzip`, `iptables`, `iproute2`, `ca-certificates`).
-2. Installs the latest official **Xray-core** and **tun2socks** binaries alongside GeoIP / GeoSite databases.
-3. Downloads and places the compiled `v2raynix` binary into `/usr/local/bin/v2raynix`.
-4. Configures system firewall rules (`ufw` / `firewalld`) to ensure web access on port `2080`.
-5. Creates, enables, and launches the `v2raynix.service` systemd daemon.
-
-Once the script finishes, open your browser and navigate to:
-```
-http://<your-server-ip>:2080
-```
-- **Default Username:** `admin`
-- **Default Password:** `admin` *(You will be prompted to change credentials upon first login or via terminal setup)*
 
 ---
 
@@ -150,38 +157,9 @@ The embedded web interface provides a reactive, modern dashboard with dark-mode 
 
 - **Dashboard:** Monitor real-time system network transfer speeds, active connection uptime, virtual TUN adapter status, and safe mode countdown.
 - **Configurations:** Import nodes via standard share links (`vless://`, `vmess://`, `trojan://`, `ss://`) or raw JSON. Run batch pings and real HTTP latency tests across all nodes.
-- **Smart Routing:** Create granular policy rules (Domain / IP / CIDR) targeting Direct, Proxy, or Block outbounds. Includes one-click presets for bypassing domestic Iranian services (`geosite:category-ir`, `geoip:ir`) and blocking ad trackers (`geosite:category-ads-all`).
+- **Smart Routing:** Create granular policy rules (Domain / IP / CIDR) targeting Direct, Proxy, or Block outbounds. Includes one-click presets for bypassing domestic services (`geosite:category-ir`, `geoip:ir`) and blocking ad trackers (`geosite:category-ads-all`).
 - **Live Logs:** Real-time log inspector streaming kernel routing events, daemon state transitions, and Xray core output.
 - **Settings & Core Updater:** Configure listening ports, Safe Mode timeouts, admin passwords, and update underlying Xray / tun2socks cores with single-click zero-downtime execution.
-
----
-
-## 🛠️ Building from Source
-
-### Prerequisites
-- **Go:** Version 1.23 or newer
-- **Node.js & npm:** Version 18+ (for compiling the embedded React frontend)
-- **Make / Bash:** Standard build utilities
-
-### Step-by-Step Compilation
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/v2raynix/v2raynix.git
-cd v2raynix
-
-# 2. Build the React SPA frontend
-cd web
-npm install
-npm run build
-cd ..
-
-# 3. Compile the single standalone Go binary
-go build -ldflags="-s -w" -o bin/v2raynix ./cmd/v2raynix
-
-# 4. Run locally in simulation (mock) mode
-./bin/v2raynix -port 2080 -mock
-```
 
 ---
 
@@ -203,6 +181,42 @@ Flags:
   -version
         Print V2Raynix version and exit
 ```
+
+---
+
+## 🛠️ Building from Source (Optional)
+
+<details>
+<summary><b>Click here to view compilation instructions (for developers)</b></summary>
+<br/>
+
+If you prefer compiling directly from the source code rather than using the automated 1-command installer:
+
+### Prerequisites:
+- **Go:** Version 1.23 or newer
+- **Node.js & npm:** Version 18+ (for compiling the embedded React frontend)
+- **Make / Bash:** Standard build utilities
+
+### Step-by-Step Compilation:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/v2raynix/v2raynix.git
+cd v2raynix
+
+# 2. Build the React SPA frontend
+cd web
+npm install
+npm run build
+cd ..
+
+# 3. Compile the single standalone Go binary
+go build -ldflags="-s -w" -o bin/v2raynix ./cmd/v2raynix
+
+# 4. Run locally in simulation (mock) mode
+./bin/v2raynix -port 2080 -mock
+```
+</details>
 
 ---
 

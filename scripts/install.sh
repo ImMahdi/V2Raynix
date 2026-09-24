@@ -140,22 +140,63 @@ ensure_xray
 ensure_tun2socks
 configure_firewall 2080
 
-# Build or install binary
-if [ -f "./bin/v2raynix" ]; then
-    cp ./bin/v2raynix /usr/local/bin/v2raynix
-elif [ -f "./v2raynix" ]; then
-    cp ./v2raynix /usr/local/bin/v2raynix
-else
-    echo -e "${YELLOW}Building V2Raynix binary from source...${NC}"
-    if command -v go >/dev/null 2>&1; then
-        go build -o /usr/local/bin/v2raynix ./cmd/v2raynix
+# Install v2raynix binary
+ensure_v2raynix() {
+    if [ -f "./bin/v2raynix" ]; then
+        echo -e "${GREEN}* Installing from local ./bin/v2raynix...${NC}"
+        cp -f ./bin/v2raynix /usr/local/bin/v2raynix
+    elif [ -f "./v2raynix" ]; then
+        echo -e "${GREEN}* Installing from local ./v2raynix...${NC}"
+        cp -f ./v2raynix /usr/local/bin/v2raynix
     else
-        echo -e "${RED}Error: go compiler not found. Please install go or pre-build bin/v2raynix.${NC}"
-        exit 1
-    fi
-fi
+        echo -e "${YELLOW}* Fetching precompiled V2Raynix binary for ${GOARCH}...${NC}"
+        local release_base="https://github.com/v2raynix/v2raynix/releases/latest/download"
+        local archive_name="v2raynix-linux-${GOARCH}.tar.gz"
+        local direct_bin_name="v2raynix-linux-${GOARCH}"
+        local tmp_archive="/tmp/${archive_name}"
+        local tmp_bin="/tmp/${direct_bin_name}"
+        local installed=false
 
-chmod +x /usr/local/bin/v2raynix
+        # Attempt 1: Compressed tarball
+        if fetch_asset "${release_base}/${archive_name}" "$tmp_archive" 2>/dev/null && [ -s "$tmp_archive" ]; then
+            if tar -tzf "$tmp_archive" >/dev/null 2>&1; then
+                tar -xzf "$tmp_archive" -C /tmp/
+                if [ -f "/tmp/v2raynix" ]; then
+                    cp -f /tmp/v2raynix /usr/local/bin/v2raynix
+                    installed=true
+                fi
+            fi
+            rm -f "$tmp_archive"
+        fi
+
+        # Attempt 2: Direct standalone binary
+        if [ "$installed" = false ]; then
+            if fetch_asset "${release_base}/${direct_bin_name}" "$tmp_bin" 2>/dev/null && [ -s "$tmp_bin" ]; then
+                cp -f "$tmp_bin" /usr/local/bin/v2raynix
+                installed=true
+            fi
+            rm -f "$tmp_bin"
+        fi
+
+        # Attempt 3: Build from source if go is installed
+        if [ "$installed" = false ]; then
+            if command -v go >/dev/null 2>&1; then
+                echo -e "${YELLOW}* Precompiled binary not yet published; compiling with Go...${NC}"
+                go build -ldflags="-s -w" -o /usr/local/bin/v2raynix ./cmd/v2raynix
+                installed=true
+            fi
+        fi
+
+        if [ "$installed" = false ]; then
+            echo -e "${RED}Error: Could not install V2Raynix binary. Please check release availability or install Go.${NC}"
+            exit 1
+        fi
+    fi
+    chmod +x /usr/local/bin/v2raynix
+    echo -e "${GREEN}* V2Raynix binary successfully installed to /usr/local/bin/v2raynix${NC}"
+}
+
+ensure_v2raynix
 
 # Install systemd service
 cat << 'EOF' > /etc/systemd/system/v2raynix.service
