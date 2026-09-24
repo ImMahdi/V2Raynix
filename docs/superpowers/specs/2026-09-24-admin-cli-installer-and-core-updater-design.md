@@ -125,16 +125,19 @@ In [`scripts/install.sh`](file:///c:/MaadZone/Github%20Projects/V2Raynix/scripts
   1. Primary: Direct GitHub Releases (`https://github.com/.../releases/download/...`)
   2. Fallback Mirror (for restricted networks / Iran VPS): `https://ghproxy.net/https://github.com/...` or fast reverse proxies.
 
-### 4.2 Helper Functions
+### 4.2 Helper Functions & Firewall Integration
 - `ensure_xray()`: Checks `command -v xray`. If absent:
-  - Fetches latest release tag or official asset.
-  - Unzips binary and geo data (`geoip.dat`, `geosite.dat`) into `/usr/local/share/xray` and `/usr/local/bin/xray`.
+  - Fetches latest release tag or official asset from GitHub Releases (fallback to anti-censorship mirror `ghproxy.net` if unreachable).
+  - Unzips binary and geo data (`geoip.dat`, `geosite.dat`) into `/usr/local/share/xray` and `/usr/local/bin/xray`. (Critical: without geo data, rules like `geosite:ir` fail).
   - Verifies `xray version` succeeds.
 - `ensure_tun2socks()`: Checks `command -v tun2socks`. If absent:
-  - Downloads release zip.
+  - Downloads release zip from GitHub or mirror.
   - Extracts binary into `/usr/local/bin/tun2socks`.
   - Grants executable permissions (`chmod +x`).
   - Verifies `tun2socks -v` or `tun2socks -version` succeeds.
+- **Firewall Integration:**
+  - Detects if `ufw` is active: runs `ufw allow 2080/tcp` (or chosen port).
+  - Detects if `firewalld` is active: runs `firewall-cmd --add-port=2080/tcp --permanent && firewall-cmd --reload`.
 
 ---
 
@@ -167,29 +170,38 @@ type UpdateStatus struct {
   - For `xray`: Executes `xray -version` and extracts semantic version using regex `Xray (\d+\.\d+\.\d+)`.
   - For `tun2socks`: Executes `tun2socks -v` or `tun2socks -version` and extracts `v?(\d+\.\d+\.\d+)`.
 
-### 5.3 GitHub Release Checking
+### 5.3 GitHub Release Checking & Caching
 - Queries GitHub Releases API:
   - `https://api.github.com/repos/XTLS/Xray-core/releases/latest`
   - `https://api.github.com/repos/xjasonlyu/tun2socks/releases/latest`
 - Parses `tag_name` (e.g. `v25.1.30` or `v2.5.2`).
 - Compares versions via standard SemVer logic.
-- Implements in-memory cache (TTL: 6 hours) to prevent GitHub rate-limiting, with manual force-refresh option.
+- **Rate-Limit & Cache Strategy:**
+  - GitHub unauthenticated rate limit is 60 req/hour.
+  - Caches status in memory for 6 hours. Manual refresh ("Check for Updates") bypasses cache.
+  - If GitHub responds with HTTP 403 (Rate Limited), gracefully logs warning and serves cached data or fallback without breaking the UI.
 
 ### 5.4 Safe Atomic Update Routine
 When `UpdateCore(coreName string)` is invoked:
 1. **State Lock:** Sets `IsUpdating = true` to prevent concurrent updates.
-2. **Tunnel Quiesce:** If supervisor has active tunnel, gracefully pauses or records state.
+2. **Download Attempt (No Forced Tunnel):**
+   - Attempts direct download (with mirror fallback).
+   - The user is **NOT** mandated to connect the tunnel beforehand.
+   - If download fails (e.g., connection timed out or blocked), aborts cleanly with a descriptive error message: `"Download failed: unable to reach release server. Please verify server internet connectivity or activate the proxy tunnel and try again."`
 3. **Backup:** Copies `/usr/local/bin/<core>` to `/usr/local/bin/<core>.bak`.
-4. **Download & Verify:**
-   - Downloads new asset from GitHub / mirror to a temp file (`/tmp/<core>.new`).
-   - Extracts binary and tests execution with `--version`.
-5. **Atomic Swap:** Moves `/tmp/<core>.new` over `/usr/local/bin/<core>` and sets `chmod 0755`.
+4. **Binary & GeoData Unpack:**
+   - Extracts binary and geo assets (`geosite.dat`, `geoip.dat`) to `/tmp/<core>.new`.
+   - Tests standalone execution in `/tmp/` with `--version`.
+5. **Atomic Swap (`os.Rename`):**
+   - Pauses tunnel briefly if active.
+   - Uses `os.Rename` (`mv`) to atomically swap `/tmp/<core>.new` into `/usr/local/bin/<core>` to prevent Linux `ETXTBSY (Text file busy)` errors.
+   - Sets executable permissions (`chmod 0755`).
 6. **Health Verification:**
    - Runs `/usr/local/bin/<core> -version`.
-   - If execution fails or crashes: restores `.bak` file immediately (Rollback).
+   - If execution fails or crashes: immediately restores `.bak` file (Automated Rollback).
 7. **Post-Update:**
    - Cleans up temporary artifacts.
-   - If tunnel was active, signals supervisor to reconnect.
+   - If tunnel was active before update, signals supervisor to reconnect with the new core.
 
 ### 5.5 API Endpoints
 - `GET /api/system/updates`: Returns current `UpdateStatus`.
@@ -202,7 +214,7 @@ When `UpdateCore(coreName string)` is invoked:
 
 ### 6.1 Password Visibility Toggle
 In [`web/src/pages/LoginPage.jsx`](file:///c:/MaadZone/Github%20Projects/V2Raynix/web/src/pages/LoginPage.jsx):
-- Adds a toggle button inside the password input using `Eye` and `EyeOff` icons from `lucide-react`.
+- Adds a toggle button (`type="button"`) inside the password input using `Eye` and `EyeOff` icons from `lucide-react`.
 - Toggles state `showPassword` (switching `input type="password"` ↔ `type="text"`).
 
 ### 6.2 Update Notification Badge (Header)
@@ -229,7 +241,17 @@ In [`web/src/pages/SettingsPage.jsx`](file:///c:/MaadZone/Github%20Projects/V2Ra
 
 ---
 
-## 7. Testing & Verification Plan
+## 7. Operational Hardening Rulings
+
+1. **Daemon Cache Synchronization:** Whenever credentials or web port are changed via `v2raynix setup`, the CLI executes `systemctl restart v2raynix` to prevent stale in-memory store states from overwriting disk changes.
+2. **Download Independence:** Updates never force tunnel activation. If direct/mirror download fails, a clear actionable error is shown to the user.
+3. **Zero-Downtime Atomic Swapping:** Uses Linux `rename()` semantics instead of in-place stream writing to prevent `ETXTBSY`.
+4. **GeoData Completeness:** Xray installations always bundle `geosite.dat` and `geoip.dat` in `/usr/local/share/xray` to ensure rules (e.g. `geosite:ir`) resolve without crashes.
+5. **Firewall Auto-Permit:** `install.sh` automatically checks and allows the web port in `ufw` and `firewalld`.
+
+---
+
+## 8. Testing & Verification Plan
 
 1. **CLI Tests:**
    - Unit tests for password hashing and credential updates in `internal/cli/setup_test.go`.
@@ -247,3 +269,4 @@ In [`web/src/pages/SettingsPage.jsx`](file:///c:/MaadZone/Github%20Projects/V2Ra
    - Run `v2raynix setup` over SSH terminal to test interactive menu.
    - Verify eye toggle on login page.
    - Trigger core version check and inspect UI badge.
+
