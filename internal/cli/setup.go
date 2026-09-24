@@ -69,12 +69,6 @@ func GetServiceStatus() (string, error) {
 
 // RunSetup handles interactive and non-interactive server setup
 func RunSetup(dataDir string, args []string) error {
-	dbPath := filepath.Join(dataDir, "v2raynix.json")
-	st, err := store.New(dbPath)
-	if err != nil {
-		return fmt.Errorf("failed to open store at %s: %w", dbPath, err)
-	}
-
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 	userFlag := fs.String("user", "", "Set new admin username")
 	passFlag := fs.String("pass", "", "Set new admin password")
@@ -83,6 +77,19 @@ func RunSetup(dataDir string, args []string) error {
 
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	// Quick actions that do not require store access
+	if *serviceFlag == "status" {
+		status, _ := GetServiceStatus()
+		fmt.Printf("Service status: %s\n", status)
+		return nil
+	}
+
+	dbPath := filepath.Join(dataDir, "v2raynix.json")
+	st, err := store.New(dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to open store at %s: %w", dbPath, err)
 	}
 
 	// Non-interactive handling
