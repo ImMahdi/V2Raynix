@@ -25,6 +25,7 @@ type Store interface {
 	SetActiveConfig(id string) error
 	GetActiveConfig() (*ConfigItem, error)
 	UpdateLatency(id string, latencyMs int) error
+	UpdateLatenciesBatch(latencies map[string]int) error
 
 	GetRoutingRules() ([]*RoutingRule, error)
 	SaveRoutingRule(rule *RoutingRule) error
@@ -333,6 +334,22 @@ func (fs *FileStore) UpdateLatency(id string, latencyMs int) error {
 		return ErrNotFound
 	}
 	cfg.LatencyMs = latencyMs
+	return fs.persist()
+}
+
+func (fs *FileStore) UpdateLatenciesBatch(latencies map[string]int) error {
+	if len(latencies) == 0 {
+		return nil
+	}
+
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	for id, lat := range latencies {
+		if item, ok := fs.data.Configs[id]; ok {
+			item.LatencyMs = lat
+		}
+	}
 	return fs.persist()
 }
 
