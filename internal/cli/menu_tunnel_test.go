@@ -66,7 +66,11 @@ func (m *mockTunnelLogsBridge) ListConfigs() ([]store.ConfigItem, string, error)
 func (m *mockTunnelLogsBridge) AddConfigFromLink(link string) (*store.ConfigItem, error) {
 	return nil, nil
 }
-func (m *mockTunnelLogsBridge) DeleteConfig(id string) error { return nil }
+func (m *mockTunnelLogsBridge) DeleteConfig(id string) error    { return nil }
+func (m *mockTunnelLogsBridge) SetActiveConfig(id string) error {
+	m.activeConfigID = id
+	return nil
+}
 func (m *mockTunnelLogsBridge) TestConfig(id string) (int, error) { return 0, nil }
 func (m *mockTunnelLogsBridge) TestAllConfigs() error             { return nil }
 func (m *mockTunnelLogsBridge) ListRules() ([]store.RoutingRule, error) {

@@ -38,6 +38,7 @@ type TUIBridge interface {
 	ListConfigs() ([]store.ConfigItem, string, error)
 	AddConfigFromLink(link string) (*store.ConfigItem, error)
 	DeleteConfig(id string) error
+	SetActiveConfig(id string) error
 	TestConfig(id string) (int, error)
 	TestAllConfigs() error
 	ListRules() ([]store.RoutingRule, error)
@@ -401,6 +402,16 @@ func (b *bridgeImpl) DeleteConfig(id string) error {
 		return b.store.DeleteConfig(id)
 	}
 	return nil
+}
+
+func (b *bridgeImpl) SetActiveConfig(id string) error {
+	if b.IsDaemonRunning() {
+		return b.doRequest(http.MethodPost, fmt.Sprintf("/api/configs/%s/activate", id), nil, nil)
+	}
+	if b.store == nil {
+		return errors.New("store not initialized")
+	}
+	return b.store.SetActiveConfig(id)
 }
 
 func (b *bridgeImpl) TestConfig(id string) (int, error) {
