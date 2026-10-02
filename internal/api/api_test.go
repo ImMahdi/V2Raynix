@@ -663,5 +663,86 @@ func TestAPI_SettingsEndpoints(t *testing.T) {
 	}
 }
 
+func TestAPI_HealthCheckEndpoint(t *testing.T) {
+	router, tempDir := setupTestRouter(t)
+	defer os.RemoveAll(tempDir)
 
+	// 1. Unauthenticated request -> 401
+	unauthReq := httptest.NewRequest(http.MethodPost, "/api/health/check", nil)
+	unauthRec := httptest.NewRecorder()
+	router.ServeHTTP(unauthRec, unauthReq)
+	if unauthRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 Unauthorized for unauthenticated health check, got %d", unauthRec.Code)
+	}
 
+	// Login
+	loginBody, _ := json.Marshal(map[string]string{
+		"username": "admin",
+		"password": "admin123",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var loginResp map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &loginResp)
+	token := loginResp["token"].(string)
+
+	// 2. Health check probe success (mock HTTP server returning 204)
+	tsSuccess := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer tsSuccess.Close()
+
+	bodySuccess, _ := json.Marshal(map[string]string{
+		"targetUrl": tsSuccess.URL,
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/health/check", bytes.NewReader(bodySuccess))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for POST /api/health/check, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resSuccess api.HealthCheckResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resSuccess); err != nil {
+		t.Fatalf("failed to decode health check response: %v", err)
+	}
+	if !resSuccess.Healthy {
+		t.Fatalf("expected healthy true, got false")
+	}
+	if resSuccess.Error != "" {
+		t.Fatalf("expected empty error, got: %s", resSuccess.Error)
+	}
+
+	// 3. Health check probe failure (mock HTTP server returning 500)
+	tsFail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer tsFail.Close()
+
+	bodyFail, _ := json.Marshal(map[string]string{
+		"targetUrl": tsFail.URL,
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/health/check", bytes.NewReader(bodyFail))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for failed health probe API response, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resFail api.HealthCheckResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resFail); err != nil {
+		t.Fatalf("failed to decode health check response: %v", err)
+	}
+	if resFail.Healthy {
+		t.Fatalf("expected healthy false for HTTP 500, got true")
+	}
+	if resFail.Error == "" {
+		t.Fatalf("expected non-empty error for HTTP 500, got empty string")
+	}
+}

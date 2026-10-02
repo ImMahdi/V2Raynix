@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -64,6 +65,11 @@ type Supervisor struct {
 
 	logs   []LogEntry
 	logsMu sync.RWMutex
+
+	watchdogCancel     context.CancelFunc
+	watchdogInterval   time.Duration
+	watchdogRetryDelay time.Duration
+	restartCount       int
 }
 
 func NewSupervisor(st store.Store, safeModeSec int, mockMode bool, dataDirs ...string) *Supervisor {
@@ -113,6 +119,7 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	if s.mockMode {
 		s.state = "connected"
 		s.startSafeModeTimerLocked()
+		s.startHealthWatchdogLocked()
 		s.addLog("info", "Tunnel connected successfully (mock)")
 		return nil
 	}
@@ -271,6 +278,7 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 
 	s.state = "connected"
 	s.startSafeModeTimerLocked()
+	s.startHealthWatchdogLocked()
 	s.addLog("info", "Tunnel connected successfully and routing applied")
 	return nil
 }
@@ -327,6 +335,11 @@ func (s *Supervisor) stopTunnelLocked() error {
 
 	if s.safeMode != nil {
 		s.safeMode.Confirm()
+	}
+
+	if s.watchdogCancel != nil {
+		s.watchdogCancel()
+		s.watchdogCancel = nil
 	}
 
 	if s.tun2socksCmd != nil && s.tun2socksCmd.Process != nil {

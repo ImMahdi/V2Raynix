@@ -89,6 +89,9 @@ func (r *Router) registerRoutes() {
 	r.mux.HandleFunc("POST /api/tunnel/safe-mode/confirm", r.requireAuth(r.handleSafeModeConfirm))
 	r.mux.HandleFunc("POST /api/tunnel/safe-mode/rollback", r.requireAuth(r.handleSafeModeRollback))
 
+	// Health Watchdog
+	r.mux.HandleFunc("POST /api/health/check", r.requireAuth(r.handleHealthCheck))
+
 	// Routing Rules
 	r.mux.HandleFunc("GET /api/routing/rules", r.requireAuth(r.handleGetRoutingRules))
 	r.mux.HandleFunc("POST /api/routing/rules", r.requireAuth(r.handleCreateRoutingRule))
