@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   ShieldCheck, 
   LayoutDashboard, 
@@ -7,10 +7,14 @@ import {
   Terminal, 
   Settings, 
   LogOut,
-  Zap
+  Zap,
+  Menu,
+  X
 } from 'lucide-react';
 
 export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpdate, onOpenUpdateModal }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'configs', label: 'Configs', icon: Layers },
@@ -26,7 +30,7 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
       borderBottom: '1px solid var(--border-color)',
       position: 'sticky',
       top: 0,
-      zIndex: 50,
+      zIndex: 101,
     }}>
       <div style={{
         maxWidth: 1200,
@@ -38,7 +42,13 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
         justifyContent: 'space-between',
       }}>
         {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }} onClick={() => onSelectTab('dashboard')}>
+        <div 
+          style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }} 
+          onClick={() => {
+            onSelectTab('dashboard');
+            setMobileMenuOpen(false);
+          }}
+        >
           <div style={{
             width: 36,
             height: 36,
@@ -59,8 +69,8 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
           </div>
         </div>
 
-        {/* Nav Tabs */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+        {/* Nav Tabs (Desktop) */}
+        <nav className="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -90,8 +100,8 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
           })}
         </nav>
 
-        {/* User & Logout */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+        {/* User & Logout (Desktop) */}
+        <div className="desktop-user-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
           {hasUpdate && (
             <button
               onClick={onOpenUpdateModal}
@@ -128,7 +138,135 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
             <LogOut size={18} />
           </button>
         </div>
+
+        {/* Hamburger Menu Button (Mobile) */}
+        <button 
+          className="mobile-menu-btn" 
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+        >
+          {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
       </div>
+
+      {/* Mobile Drawer Overlay */}
+      {mobileMenuOpen && (
+        <div 
+          className="mobile-drawer-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setMobileMenuOpen(false);
+            }
+          }}
+        >
+          <div className="mobile-drawer">
+            <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      onSelectTab(item.id);
+                      setMobileMenuOpen(false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: 'none',
+                      background: isActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                      color: isActive ? '#38bdf8' : 'var(--text-primary)',
+                      fontWeight: isActive ? 600 : 500,
+                      fontSize: '0.95rem',
+                      cursor: 'pointer',
+                      width: '100%',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div style={{ 
+              marginTop: '0.5rem', 
+              paddingTop: '0.75rem', 
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem'
+            }}>
+              {hasUpdate && (
+                <button
+                  onClick={() => {
+                    onOpenUpdateModal();
+                    setMobileMenuOpen(false);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    padding: '0.6rem 1rem',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    color: '#38bdf8',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    width: '100%',
+                  }}
+                >
+                  <Zap size={16} fill="#38bdf8" />
+                  <span>Update Available</span>
+                </button>
+              )}
+
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                padding: '0.5rem 0.25rem'
+              }}>
+                <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>user:</span>{' '}
+                  <strong style={{ color: 'var(--text-primary)' }}>{user?.username || 'admin'}</strong>
+                </div>
+                <button 
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onLogout();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid rgba(251, 113, 133, 0.3)',
+                    background: 'rgba(251, 113, 133, 0.1)',
+                    color: '#fb7185',
+                    fontSize: '0.85rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <LogOut size={16} />
+                  <span>Logout</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }
