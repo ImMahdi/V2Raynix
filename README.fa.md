@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/نسخه-v0.9.0--beta-orange.svg?style=flat-square" alt="نسخه"></a>
+  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/نسخه-v0.9.1--beta-orange.svg?style=flat-square" alt="نسخه"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-%3E%3D1.23-blue.svg?style=flat-square" alt="نسخه Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/مجوز-MIT-green.svg?style=flat-square" alt="مجوز"></a>
   <img src="https://img.shields.io/badge/پلتفرم-Linux%20(amd64%20%7C%20arm64)-purple.svg?style=flat-square" alt="پلتفرم">
