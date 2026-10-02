@@ -434,10 +434,20 @@ func (s *Supervisor) GetStatus() TunnelStatus {
 }
 
 func (s *Supervisor) AddExternalLog(level, message string) {
-	s.addLog(level, message)
+	s.addLogComponent(level, "CORE", message)
+}
+
+func (s *Supervisor) Log(level, component, message string) {
+	s.addLogComponent(level, component, message)
 }
 
 func (s *Supervisor) addLog(level, message string) {
+	s.addLogComponent(level, "CORE", message)
+}
+
+func (s *Supervisor) addLogComponent(level, component, message string) {
+	WriteLogLine(time.Now(), level, component, message)
+
 	s.logsMu.Lock()
 	defer s.logsMu.Unlock()
 
@@ -452,6 +462,7 @@ func (s *Supervisor) addLog(level, message string) {
 		s.logs = s.logs[1:]
 	}
 }
+
 
 func (s *Supervisor) GetLogs(limit int) []LogEntry {
 	s.logsMu.RLock()
