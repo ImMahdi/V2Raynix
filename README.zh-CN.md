@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/版本-v0.9.1--beta-orange.svg?style=flat-square" alt="版本"></a>
+  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/版本-v0.9.2--beta-orange.svg?style=flat-square" alt="版本"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-%3E%3D1.23-blue.svg?style=flat-square" alt="Go 版本"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/协议-MIT-green.svg?style=flat-square" alt="开源协议"></a>
   <img src="https://img.shields.io/badge/平台-Linux%20(amd64%20%7C%20arm64)-purple.svg?style=flat-square" alt="平台">

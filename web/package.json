@@ -1,7 +1,7 @@
 {
   "name": "v2raynix-web",
   "private": true,
-  "version": "0.9.1-beta",
+  "version": "0.9.2-beta",
   "type": "module",
   "scripts": {
     "dev": "vite",

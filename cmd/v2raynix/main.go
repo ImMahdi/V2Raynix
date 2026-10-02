@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"flag"
@@ -19,14 +20,39 @@ import (
 	"github.com/v2raynix/v2raynix/internal/core"
 	"github.com/v2raynix/v2raynix/internal/store"
 	"github.com/v2raynix/v2raynix/web"
+	"golang.org/x/term"
 )
 
 var (
-	Version   = "0.9.1-beta"
+	Version   = "0.9.2-beta"
 	BuildTime = "2026-10-02"
 )
 
 func main() {
+	// Subcommand: menu / tui
+	if len(os.Args) > 1 && (os.Args[1] == "menu" || os.Args[1] == "tui") {
+		targetDir := "/etc/v2raynix"
+		if os.Geteuid() != 0 {
+			if _, err := os.Stat("/etc/v2raynix"); err != nil {
+				targetDir = "./data"
+			}
+		}
+		webPort := 2080
+		if st, err := store.New(filepath.Join(targetDir, "v2raynix.json")); err == nil {
+			if s, _ := st.GetSettings(); s != nil && s.WebPort > 0 {
+				webPort = s.WebPort
+			}
+		}
+		bridge := cli.NewTUIBridge(targetDir, webPort)
+		reader := bufio.NewReader(os.Stdin)
+		if err := cli.RunMainMenu(bridge, reader); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	// Subcommand: setup
 	if len(os.Args) > 1 && os.Args[1] == "setup" {
 		targetDir := "/etc/v2raynix"
 		if os.Geteuid() != 0 {
@@ -35,6 +61,29 @@ func main() {
 			}
 		}
 		if err := cli.RunSetup(targetDir, os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	// Interactive auto-launch: if invoked directly in a terminal without flags
+	if len(os.Args) == 1 && term.IsTerminal(int(os.Stdin.Fd())) {
+		targetDir := "/etc/v2raynix"
+		if os.Geteuid() != 0 {
+			if _, err := os.Stat("/etc/v2raynix"); err != nil {
+				targetDir = "./data"
+			}
+		}
+		webPort := 2080
+		if st, err := store.New(filepath.Join(targetDir, "v2raynix.json")); err == nil {
+			if s, _ := st.GetSettings(); s != nil && s.WebPort > 0 {
+				webPort = s.WebPort
+			}
+		}
+		bridge := cli.NewTUIBridge(targetDir, webPort)
+		reader := bufio.NewReader(os.Stdin)
+		if err := cli.RunMainMenu(bridge, reader); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

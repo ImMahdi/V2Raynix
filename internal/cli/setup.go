@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/v2raynix/v2raynix/internal/store"
@@ -183,138 +182,13 @@ func RunSetup(dataDir string, args []string) error {
 		return nil
 	}
 
-	// Interactive Console Menu
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		ClearScreen()
-		settings, _ := st.GetSettings()
-		webPort := 2080
-		if settings != nil && settings.WebPort > 0 {
-			webPort = settings.WebPort
-		}
-		status, _ := GetServiceStatus()
-
-		fmt.Print(RenderMainMenu(status, webPort))
-		fmt.Printf("  %sSelect an option [0-4]:%s ", AnsiBold, AnsiReset)
-
-		choiceStr, _ := reader.ReadString('\n')
-		choice := strings.TrimSpace(choiceStr)
-
-		switch choice {
-		case "1":
-			ClearScreen()
-			fmt.Printf("\n  %s🔑  Update Admin Credentials%s\n", AnsiCyan, AnsiReset)
-			fmt.Printf("  %s(Enter '0' or 'b' at any prompt to cancel)%s\n\n", AnsiGray, AnsiReset)
-
-			fmt.Print("  Enter new username [admin]: ")
-			u, _ := reader.ReadString('\n')
-			u = strings.TrimSpace(u)
-			if u == "0" || strings.ToLower(u) == "b" {
-				continue
-			}
-			if u == "" {
-				u = "admin"
-			}
-
-			p1, err := ReadPasswordSilent("  Enter new password (min 4 chars): ", reader)
-			if err != nil || p1 == "0" || strings.ToLower(p1) == "b" {
-				continue
-			}
-
-			p2, err := ReadPasswordSilent("  Confirm new password: ", reader)
-			if err != nil || p2 == "0" || strings.ToLower(p2) == "b" {
-				continue
-			}
-
-			if len(p1) < 4 {
-				fmt.Printf("\n  %s[ERROR]%s Password must be at least 4 characters.\n", AnsiRed, AnsiReset)
-			} else if p1 != p2 {
-				fmt.Printf("\n  %s[ERROR]%s Passwords do not match.\n", AnsiRed, AnsiReset)
-			} else if err := ApplyCredentials(st, u, p1); err != nil {
-				fmt.Printf("\n  %s[ERROR]%s %v\n", AnsiRed, AnsiReset, err)
-			} else {
-				fmt.Printf("\n  %s[OK]%s Admin credentials updated (%s). Syncing service...\n", AnsiGreen, AnsiReset, u)
-				_ = RestartService()
-			}
-			fmt.Printf("\n  %sPress Enter to return to main menu...%s", AnsiGray, AnsiReset)
-			_, _ = reader.ReadString('\n')
-
-		case "2":
-			ClearScreen()
-			fmt.Printf("\n  %s🌐  Change Web Panel Port%s\n", AnsiCyan, AnsiReset)
-			fmt.Printf("  %s(Enter '0', 'b', or empty to cancel)%s\n\n", AnsiGray, AnsiReset)
-
-			fmt.Printf("  Enter new port (1-65535) [current %d]: ", webPort)
-			pStr, _ := reader.ReadString('\n')
-			pStr = strings.TrimSpace(pStr)
-			if IsCancelInput(pStr) {
-				continue
-			}
-
-			pVal, err := strconv.Atoi(pStr)
-			if err != nil {
-				fmt.Printf("\n  %s[ERROR]%s Invalid port number.\n", AnsiRed, AnsiReset)
-			} else if err := ApplyWebPort(st, pVal); err != nil {
-				fmt.Printf("\n  %s[ERROR]%s %v\n", AnsiRed, AnsiReset, err)
-			} else {
-				fmt.Printf("\n  %s[OK]%s Web port updated to %s%d%s. Restarting service...\n", AnsiGreen, AnsiReset, AnsiYellow, pVal, AnsiReset)
-				_ = RestartService()
-			}
-			fmt.Printf("\n  %sPress Enter to return to main menu...%s", AnsiGray, AnsiReset)
-			_, _ = reader.ReadString('\n')
-
-		case "3":
-			// Dedicated service management submenu
-			for {
-				ClearScreen()
-				currStatus, _ := GetServiceStatus()
-				fmt.Print(RenderServiceMenu(currStatus))
-				fmt.Printf("  %sSelect an option [0-3]:%s ", AnsiBold, AnsiReset)
-
-				sChoiceStr, _ := reader.ReadString('\n')
-				sChoice := strings.TrimSpace(strings.ToLower(sChoiceStr))
-
-				if sChoice == "0" || sChoice == "b" || sChoice == "back" || sChoice == "" {
-					break
-				}
-
-				var act string
-				switch sChoice {
-				case "1":
-					act = "restart"
-				case "2":
-					act = "stop"
-				case "3":
-					act = "start"
-				default:
-					continue
-				}
-
-				fmt.Printf("\n  Executing systemctl %s v2raynix...\n", act)
-				err := exec.Command("systemctl", act, "v2raynix").Run()
-				if err != nil {
-					fmt.Printf("  %s[ERROR]%s Failed to %s service: %v\n", AnsiRed, AnsiReset, act, err)
-				} else {
-					fmt.Printf("  %s[OK]%s Service %sed successfully.\n", AnsiGreen, AnsiReset, act)
-				}
-				fmt.Printf("\n  %sPress Enter to continue...%s", AnsiGray, AnsiReset)
-				_, _ = reader.ReadString('\n')
-			}
-
-		case "4":
-			ClearScreen()
-			fmt.Print(RenderStatusCard(status, webPort))
-			fmt.Printf("  %sPress Enter to return to main menu...%s", AnsiGray, AnsiReset)
-			_, _ = reader.ReadString('\n')
-
-		case "0":
-			ClearScreen()
-			fmt.Printf("\n  %s✓ V2Raynix server setup closed. Have a great day!%s\n\n", AnsiGreen, AnsiReset)
-			return nil
-
-		default:
-			fmt.Printf("  %sInvalid option. Press Enter to retry...%s", AnsiRed, AnsiReset)
-			_, _ = reader.ReadString('\n')
-		}
+	// Interactive Console Menu: Launch Full TUI
+	settings, _ := st.GetSettings()
+	webPort := 2080
+	if settings != nil && settings.WebPort > 0 {
+		webPort = settings.WebPort
 	}
+	bridge := NewTUIBridge(dataDir, webPort)
+	reader := bufio.NewReader(os.Stdin)
+	return RunMainMenu(bridge, reader)
 }
