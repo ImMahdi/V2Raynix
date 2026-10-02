@@ -46,6 +46,7 @@ fi
 
 # Directory setup
 mkdir -p /etc/v2raynix
+chmod 755 /etc/v2raynix
 mkdir -p /usr/local/bin
 mkdir -p /usr/local/share/xray
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -68,7 +69,22 @@ type bridgeImpl struct {
 // NewTUIBridge initializes a dual-mode bridge.
 func NewTUIBridge(dataDir string, webPort int) TUIBridge {
 	dbPath := filepath.Join(dataDir, "v2raynix.json")
-	st, _ := store.New(dbPath)
+	var st store.Store
+	if realStore, err := store.New(dbPath); err == nil && realStore != nil {
+		st = realStore
+	}
+
+	var initToken string
+	if tokenBytes, err := os.ReadFile(filepath.Join(dataDir, ".ipc_token")); err == nil {
+		initToken = strings.TrimSpace(string(tokenBytes))
+	}
+
+	adminUser := "admin"
+	if st != nil {
+		if u, err := st.GetAdminUser(); err == nil && u != nil && u.Username != "" {
+			adminUser = u.Username
+		}
+	}
 
 	resolvedPort := webPort
 	if resolvedPort <= 0 && st != nil {
@@ -85,8 +101,9 @@ func NewTUIBridge(dataDir string, webPort int) TUIBridge {
 		webPort:    resolvedPort,
 		baseURL:    fmt.Sprintf("http://127.0.0.1:%d", resolvedPort),
 		store:      st,
-		username:   "admin",
+		username:   adminUser,
 		password:   "admin",
+		token:      initToken,
 		httpClient: &http.Client{Timeout: 5 * time.Second},
 	}
 }
@@ -350,8 +367,29 @@ func (b *bridgeImpl) CheckHealth() (bool, int64, error) {
 }
 
 func (b *bridgeImpl) ListConfigs() ([]store.ConfigItem, string, error) {
+	if b.IsDaemonRunning() {
+		var cfgs []*store.ConfigItem
+		err := b.doRequest(http.MethodGet, "/api/configs", nil, &cfgs)
+		if err == nil {
+			var activeID string
+			var status struct {
+				ActiveConfigID string `json:"activeConfigId"`
+			}
+			_ = b.doRequest(http.MethodGet, "/api/tunnel/status", nil, &status)
+			activeID = status.ActiveConfigID
+
+			items := make([]store.ConfigItem, 0, len(cfgs))
+			for _, c := range cfgs {
+				if c != nil {
+					items = append(items, *c)
+				}
+			}
+			return items, activeID, nil
+		}
+	}
+
 	if b.store == nil {
-		return nil, "", errors.New("store not initialized")
+		return nil, "", errors.New("cannot access configuration store (permission denied or uninitialized). Please run with sudo")
 	}
 
 	cfgs, err := b.store.GetConfigs()
@@ -364,9 +402,11 @@ func (b *bridgeImpl) ListConfigs() ([]store.ConfigItem, string, error) {
 		activeID = active.ID
 	}
 
-	items := make([]store.ConfigItem, len(cfgs))
-	for i, c := range cfgs {
-		items[i] = *c
+	items := make([]store.ConfigItem, 0, len(cfgs))
+	for _, c := range cfgs {
+		if c != nil {
+			items = append(items, *c)
+		}
 	}
 	return items, activeID, nil
 }
@@ -458,17 +498,33 @@ func (b *bridgeImpl) TestAllConfigs() error {
 }
 
 func (b *bridgeImpl) ListRules() ([]store.RoutingRule, error) {
+	if b.IsDaemonRunning() {
+		var rules []*store.RoutingRule
+		err := b.doRequest(http.MethodGet, "/api/routing/rules", nil, &rules)
+		if err == nil {
+			items := make([]store.RoutingRule, 0, len(rules))
+			for _, r := range rules {
+				if r != nil {
+					items = append(items, *r)
+				}
+			}
+			return items, nil
+		}
+	}
+
 	if b.store == nil {
-		return nil, errors.New("store not initialized")
+		return nil, errors.New("cannot access configuration store (permission denied or uninitialized). Please run with sudo")
 	}
 
 	rules, err := b.store.GetRoutingRules()
 	if err != nil {
 		return nil, err
 	}
-	items := make([]store.RoutingRule, len(rules))
-	for i, r := range rules {
-		items[i] = *r
+	items := make([]store.RoutingRule, 0, len(rules))
+	for _, r := range rules {
+		if r != nil {
+			items = append(items, *r)
+		}
 	}
 	return items, nil
 }
@@ -576,15 +632,36 @@ func (b *bridgeImpl) UpdateCore(engine string) error {
 }
 
 func (b *bridgeImpl) GetSettings() (*store.SystemSettings, error) {
+	if b.IsDaemonRunning() {
+		var s store.SystemSettings
+		err := b.doRequest(http.MethodGet, "/api/settings", nil, &s)
+		if err == nil {
+			return &s, nil
+		}
+	}
+
 	if b.store == nil {
-		return nil, errors.New("store not initialized")
+		return nil, errors.New("cannot access configuration store (permission denied or uninitialized). Please run with sudo")
 	}
 	return b.store.GetSettings()
 }
 
 func (b *bridgeImpl) SaveSettings(settings *store.SystemSettings) error {
+	if b.IsDaemonRunning() {
+		err := b.doRequest(http.MethodPost, "/api/settings", settings, nil)
+		if err == nil {
+			if settings != nil && settings.WebPort > 0 {
+				b.mu.Lock()
+				b.webPort = settings.WebPort
+				b.baseURL = fmt.Sprintf("http://127.0.0.1:%d", b.webPort)
+				b.mu.Unlock()
+			}
+			return nil
+		}
+	}
+
 	if b.store == nil {
-		return errors.New("store not initialized")
+		return errors.New("cannot access configuration store (permission denied or uninitialized). Please run with sudo")
 	}
 	if err := b.store.SaveSettings(settings); err != nil {
 		return err

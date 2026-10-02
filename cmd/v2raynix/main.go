@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -29,6 +30,24 @@ var (
 )
 
 func main() {
+	// On Linux, if non-root user runs an interactive terminal session (e.g. 'v2raynix', 'v2raynix menu', 'v2raynix setup'),
+	// elevate via sudo so the process has full permissions to manage system services, kernel routes, and store.
+	if os.Geteuid() != 0 && term.IsTerminal(int(os.Stdin.Fd())) {
+		isInteractive := len(os.Args) == 1 || (len(os.Args) > 1 && (os.Args[1] == "menu" || os.Args[1] == "tui" || os.Args[1] == "setup"))
+		if isInteractive {
+			if sudoPath, err := exec.LookPath("sudo"); err == nil {
+				cmd := exec.Command(sudoPath, os.Args...)
+				cmd.Stdin = os.Stdin
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				if err := cmd.Run(); err == nil {
+					os.Exit(0)
+				}
+				os.Exit(1)
+			}
+		}
+	}
+
 	// Subcommand: menu / tui
 	if len(os.Args) > 1 && (os.Args[1] == "menu" || os.Args[1] == "tui") {
 		targetDir := "/etc/v2raynix"
@@ -148,6 +167,17 @@ func main() {
 	// Random JWT secret
 	jwtSecret := make([]byte, 32)
 	_, _ = rand.Read(jwtSecret)
+
+	// Generate local IPC admin token for local CLI/TUI tools
+	adminUser := "admin"
+	if admin != nil && admin.Username != "" {
+		adminUser = admin.Username
+	}
+	if ipcToken, err := auth.GenerateJWT(adminUser, jwtSecret, 365*24*time.Hour); err == nil {
+		ipcFile := filepath.Join(targetDir, ".ipc_token")
+		_ = os.WriteFile(ipcFile, []byte(ipcToken), 0644)
+		_ = os.Chmod(ipcFile, 0644)
+	}
 
 	// Process supervisor
 	settings, _ := st.GetSettings()
