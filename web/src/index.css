@@ -239,6 +239,20 @@ body {
   margin-top: 1.5rem;
 }
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin-animate {
+  animation: spin 1s linear infinite;
+}
+
+
 .grid-configs {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -377,7 +391,19 @@ textarea.input-field {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
     animation: slideDown 0.25s ease-out;
   }
+  .grid-stats {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+  }
 }
+
+@media (max-width: 480px) {
+  .grid-stats {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+}
+
 
 @media (min-width: 769px) {
   .mobile-menu-btn {

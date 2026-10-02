@@ -125,9 +125,30 @@ export const api = {
   // Logs
   getLogs: (options = {}) => request('/system/logs', options),
 
+  // Health
+  checkHealth: (targetUrl) =>
+    request('/health/check', {
+      method: 'POST',
+      body: targetUrl ? JSON.stringify({ targetUrl }) : undefined,
+    }),
+
+  // Settings
+  getSettings: () => request('/settings'),
+  saveSettings: (settings) =>
+    request('/settings', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    }),
+  updateSettings: (settings) =>
+    request('/settings', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    }),
+
   // System Updates
   getSystemUpdates: () => request('/system/updates'),
   checkSystemUpdates: () => request('/system/check-updates', { method: 'POST' }),
   updateCore: (core) => request('/system/update-core', { method: 'POST', body: JSON.stringify({ core }) }),
 };
+
 
