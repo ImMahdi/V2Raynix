@@ -102,6 +102,11 @@ func (r *Router) registerRoutes() {
 	r.mux.HandleFunc("POST /api/system/check-updates", r.requireAuth(r.handleCheckUpdates))
 	r.mux.HandleFunc("POST /api/system/update-core", r.requireAuth(r.handleUpdateCore))
 
+	// System Settings
+	r.mux.HandleFunc("GET /api/settings", r.requireAuth(r.handleGetSettings))
+	r.mux.HandleFunc("POST /api/settings", r.requireAuth(r.handleSaveSettings))
+	r.mux.HandleFunc("PUT /api/settings", r.requireAuth(r.handleSaveSettings))
+
 	// Static SPA Serving (if provided)
 	if r.deps.StaticFS != nil {
 		fileServer := http.FileServer(http.FS(r.deps.StaticFS))

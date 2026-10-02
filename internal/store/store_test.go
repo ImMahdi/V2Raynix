@@ -505,5 +505,65 @@ func TestFileStore_UpdateLatenciesBatch(t *testing.T) {
 	}
 }
 
+func TestHealthCheckSettingsDefaults(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "v2raynix-store-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.json")
+	s, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	settings, err := s.GetSettings()
+	if err != nil {
+		t.Fatalf("unexpected error getting settings: %v", err)
+	}
+	if settings.HealthCheckIntervalMinutes != 60 {
+		t.Errorf("expected default interval 60, got %d", settings.HealthCheckIntervalMinutes)
+	}
+	if settings.HealthCheckURL != "http://cp.cloudflare.com/generate_204" {
+		t.Errorf("expected default url 'http://cp.cloudflare.com/generate_204', got '%s'", settings.HealthCheckURL)
+	}
+
+	// Update with custom interval and custom URL
+	settings.HealthCheckIntervalMinutes = 15
+	settings.HealthCheckURL = "http://www.google.com/generate_204"
+	if err := s.SaveSettings(settings); err != nil {
+		t.Fatalf("failed to save settings: %v", err)
+	}
+
+	// Verify in-memory retrieval
+	updated, err := s.GetSettings()
+	if err != nil {
+		t.Fatalf("failed to get updated settings: %v", err)
+	}
+	if updated.HealthCheckIntervalMinutes != 15 {
+		t.Errorf("expected updated interval 15, got %d", updated.HealthCheckIntervalMinutes)
+	}
+	if updated.HealthCheckURL != "http://www.google.com/generate_204" {
+		t.Errorf("expected updated url, got '%s'", updated.HealthCheckURL)
+	}
+
+	// Verify persistence by reloading from disk
+	s2, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reload store from disk: %v", err)
+	}
+	persisted, err := s2.GetSettings()
+	if err != nil {
+		t.Fatalf("failed to get persisted settings: %v", err)
+	}
+	if persisted.HealthCheckIntervalMinutes != 15 {
+		t.Errorf("expected persisted interval 15, got %d", persisted.HealthCheckIntervalMinutes)
+	}
+	if persisted.HealthCheckURL != "http://www.google.com/generate_204" {
+		t.Errorf("expected persisted url, got '%s'", persisted.HealthCheckURL)
+	}
+}
+
 
 

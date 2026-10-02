@@ -553,5 +553,115 @@ func TestAPI_SystemUpdateEndpoints(t *testing.T) {
 	}
 }
 
+func TestAPI_SettingsEndpoints(t *testing.T) {
+	router, tempDir := setupTestRouter(t)
+	defer os.RemoveAll(tempDir)
+
+	// Unauthorized GET -> 401
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 Unauthorized for GET /api/settings without token, got %d", rec.Code)
+	}
+
+	// Login to get token
+	loginBody, _ := json.Marshal(map[string]string{
+		"username": "admin",
+		"password": "admin123",
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var loginResp map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &loginResp)
+	token := loginResp["token"].(string)
+
+	// GET /api/settings -> 200 OK with defaults
+	req = httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for GET /api/settings, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var current store.SystemSettings
+	if err := json.Unmarshal(rec.Body.Bytes(), &current); err != nil {
+		t.Fatalf("failed to decode settings: %v", err)
+	}
+	if current.HealthCheckIntervalMinutes != 60 {
+		t.Errorf("expected default interval 60, got %d", current.HealthCheckIntervalMinutes)
+	}
+	if current.HealthCheckURL != "http://cp.cloudflare.com/generate_204" {
+		t.Errorf("expected default health check url, got %s", current.HealthCheckURL)
+	}
+
+	// POST /api/settings -> update settings
+	updateBody, _ := json.Marshal(store.SystemSettings{
+		WebPort:                    2080,
+		SafeModeSeconds:            120,
+		AutoStartTunnel:            true,
+		HealthCheckIntervalMinutes: 30,
+		HealthCheckURL:             "http://www.google.com/generate_204",
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/settings", bytes.NewReader(updateBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for POST /api/settings, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify updated settings via GET
+	req = httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var updated store.SystemSettings
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("failed to decode updated settings: %v", err)
+	}
+	if updated.HealthCheckIntervalMinutes != 30 {
+		t.Errorf("expected interval 30, got %d", updated.HealthCheckIntervalMinutes)
+	}
+	if updated.HealthCheckURL != "http://www.google.com/generate_204" {
+		t.Errorf("expected updated health check url, got %s", updated.HealthCheckURL)
+	}
+	if !updated.AutoStartTunnel {
+		t.Errorf("expected autoStartTunnel true, got false")
+	}
+
+	// PUT /api/settings -> update settings
+	putBody, _ := json.Marshal(store.SystemSettings{
+		WebPort:                    2080,
+		SafeModeSeconds:            90,
+		AutoStartTunnel:            false,
+		HealthCheckIntervalMinutes: 10,
+		HealthCheckURL:             "http://cp.cloudflare.com/generate_204",
+	})
+	req = httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(putBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for PUT /api/settings, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Bad Request test (invalid JSON)
+	req = httptest.NewRequest(http.MethodPost, "/api/settings", bytes.NewReader([]byte("{invalid-json")))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request for invalid json, got %d", rec.Code)
+	}
+}
+
 
 

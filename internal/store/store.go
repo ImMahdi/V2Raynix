@@ -64,9 +64,11 @@ func New(filePath string) (*FileStore, error) {
 			Configs:      make(map[string]*ConfigItem),
 			RoutingRules: make(map[string]*RoutingRule),
 			Settings: &SystemSettings{
-				WebPort:         2080,
-				SafeModeSeconds: 120,
-				AutoStartTunnel: false,
+				WebPort:                    2080,
+				SafeModeSeconds:            120,
+				AutoStartTunnel:            false,
+				HealthCheckIntervalMinutes: 60,
+				HealthCheckURL:             "http://cp.cloudflare.com/generate_204",
 			},
 		},
 	}
@@ -94,9 +96,18 @@ func (fs *FileStore) normalizeData() {
 	}
 	if fs.data.Settings == nil {
 		fs.data.Settings = &SystemSettings{
-			WebPort:         2080,
-			SafeModeSeconds: 120,
-			AutoStartTunnel: false,
+			WebPort:                    2080,
+			SafeModeSeconds:            120,
+			AutoStartTunnel:            false,
+			HealthCheckIntervalMinutes: 60,
+			HealthCheckURL:             "http://cp.cloudflare.com/generate_204",
+		}
+	} else {
+		if fs.data.Settings.HealthCheckIntervalMinutes <= 0 {
+			fs.data.Settings.HealthCheckIntervalMinutes = 60
+		}
+		if fs.data.Settings.HealthCheckURL == "" {
+			fs.data.Settings.HealthCheckURL = "http://cp.cloudflare.com/generate_204"
 		}
 	}
 }
@@ -426,6 +437,12 @@ func (fs *FileStore) GetSettings() (*SystemSettings, error) {
 	defer fs.mu.RUnlock()
 
 	settingsCopy := *fs.data.Settings
+	if settingsCopy.HealthCheckIntervalMinutes <= 0 {
+		settingsCopy.HealthCheckIntervalMinutes = 60
+	}
+	if settingsCopy.HealthCheckURL == "" {
+		settingsCopy.HealthCheckURL = "http://cp.cloudflare.com/generate_204"
+	}
 	return &settingsCopy, nil
 }
 

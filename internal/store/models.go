@@ -31,7 +31,12 @@ type UserAccount struct {
 
 // SystemSettings represents persistent application settings
 type SystemSettings struct {
-	WebPort         int  `json:"webPort"`
-	SafeModeSeconds int  `json:"safeModeSeconds"`
-	AutoStartTunnel bool `json:"autoStartTunnel"`
+	WebPort                    int    `json:"webPort"`
+	SafeModeSeconds            int    `json:"safeModeSeconds"`
+	AutoStartTunnel            bool   `json:"autoStartTunnel"`
+	HealthCheckIntervalMinutes int    `json:"healthCheckIntervalMinutes"`
+	HealthCheckURL             string `json:"healthCheckURL"`
 }
+
+// Settings is an alias for SystemSettings for compatibility and convenience
+type Settings = SystemSettings
