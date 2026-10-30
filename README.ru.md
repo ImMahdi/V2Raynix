@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/версия-v0.9.2--beta-orange.svg?style=flat-square" alt="Версия"></a>
+  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/версия-v0.9.3--beta-orange.svg?style=flat-square" alt="Версия"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-%3E%3D1.23-blue.svg?style=flat-square" alt="Версия Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/лицензия-MIT-green.svg?style=flat-square" alt="Лицензия"></a>
   <img src="https://img.shields.io/badge/платформа-Linux%20(amd64%20%7C%20arm64)-purple.svg?style=flat-square" alt="Платформа">
@@ -172,8 +172,25 @@ sudo v2raynix setup
 
 ## ⚙️ Параметры командной строки (CLI)
 
+Помимо веб-панели и интерактивного меню TUI, V2Raynix поддерживает прямое управление без графического интерфейса (Headless CLI) для удобной автоматизации и использования в скриптах.
+
+### Команды управления без GUI (Headless CLI)
+
+| Команда | Описание |
+| :--- | :--- |
+| `v2raynix list` | Список всех сохраненных конфигураций узлов и их статус активности |
+| `v2raynix connect [node] [--force]` | Подключение к узлу (по точному ID или подстроке имени). Флаг `--force` пропускает режим ожидания Safe Mode |
+| `v2raynix disconnect` | Отключение активного туннеля и возврат к прямому сетевому подключению |
+| `v2raynix status [--json]` | Просмотр статуса сервиса, туннеля, скорости трафика и режима Safe Mode (поддерживает `--json`) |
+| `v2raynix health` | Запуск живой проверки HTTP-задержки и доступности сети через туннель |
+| `v2raynix confirm` | Немедленное подтверждение стабильности сети и отмена таймера отката Safe Mode |
+| `v2raynix rollback` | Немедленный откат сетевых маршрутов при потере связи |
+
+### Флаги демона и параметров запуска
+
 ```text
-Usage: v2raynix [flags]
+Usage: v2raynix [command] [options]
+       v2raynix [flags]
        v2raynix setup [subcommand flags]
 
 Flags:

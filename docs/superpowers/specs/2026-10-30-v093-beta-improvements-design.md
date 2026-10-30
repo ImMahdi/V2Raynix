@@ -168,3 +168,4 @@ v2raynix rollback
    - Run `v2raynix connect [node] --force` and confirm immediate permanent connection.
    - Run interactive TUI, connect to a node, and verify immediate Safe Mode prompt.
    - Trigger Xray core update from both TUI and web panel through reverse proxy port and verify success.
+

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/version-v0.9.2--beta-orange.svg?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/version-v0.9.3--beta-orange.svg?style=flat-square" alt="Version"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/go-%3E%3D1.23-blue.svg?style=flat-square" alt="Go Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/platform-Linux%20(amd64%20%7C%20arm64)-purple.svg?style=flat-square" alt="Platform">
@@ -172,8 +172,25 @@ The embedded web interface provides a reactive, modern dashboard with dark-mode 
 
 ## ⚙️ CLI Reference
 
+V2Raynix can be managed completely headless via scriptable CLI subcommands, an interactive TUI menu, or automated background flags.
+
+### Headless Management Commands
+
+| Command | Description |
+| :--- | :--- |
+| `v2raynix list` | List all saved node configurations and active status |
+| `v2raynix connect [node] [--force]` | Connect to a configuration (by exact ID or name substring). `--force` bypasses safe mode prompt |
+| `v2raynix disconnect` | Disconnect the active tunnel and restore direct networking |
+| `v2raynix status [--json]` | Print current service, tunnel, traffic speeds, and safe mode status (supports `--json`) |
+| `v2raynix health` | Perform live HTTP latency and connectivity probe through the active tunnel |
+| `v2raynix confirm` | Immediately confirm network health to persist tunnel and cancel safe mode countdown |
+| `v2raynix rollback` | Immediately abort connection and rollback system network routing to safe state |
+
+### CLI Daemon & Service Flags
+
 ```text
-Usage: v2raynix [flags]
+Usage: v2raynix [command] [options]
+       v2raynix [flags]
        v2raynix setup [subcommand flags]
 
 Flags:

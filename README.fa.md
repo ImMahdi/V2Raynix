@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/نسخه-v0.9.2--beta-orange.svg?style=flat-square" alt="نسخه"></a>
+  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/نسخه-v0.9.3--beta-orange.svg?style=flat-square" alt="نسخه"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-%3E%3D1.23-blue.svg?style=flat-square" alt="نسخه Go"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/مجوز-MIT-green.svg?style=flat-square" alt="مجوز"></a>
   <img src="https://img.shields.io/badge/پلتفرم-Linux%20(amd64%20%7C%20arm64)-purple.svg?style=flat-square" alt="پلتفرم">
@@ -172,8 +172,25 @@ sudo v2raynix setup
 
 ## ⚙️ پارامترها و سوییچ‌های خط فرمان (CLI)
 
+نرم‌افزار V2Raynix علاوه‌بر داشبورد وب و منوی گرافیکی متنی (TUI)، قابلیت کنترل کامل بدون واسط گرافیکی (Headless) از طریق خط فرمان جهت اسکریپت‌نویسی و اتوماسیون سرور را داراست.
+
+### دستورات مستقیم خط فرمان (Headless CLI)
+
+| دستور | توضیحات |
+| :--- | :--- |
+| `v2raynix list` | مشاهده فهرست تمام کانفیگ‌های ذخیره شده و وضعیت فعال بودن آن‌ها |
+| `v2raynix connect [node] [--force]` | اتصال به کانفیگ (با شناسه یا بخشی از نام). سوییچ `--force` تایید خودکار حالت امن را انجام می‌دهد |
+| `v2raynix disconnect` | قطع اتصال تونل فعال و بازگردانی مسیر شبکه به حالت عادی سرور |
+| `v2raynix status [--json]` | مشاهده وضعیت زنده سرویس، تونل، ترافیک، و وضعیت حالت امن (با پشتیبانی خروجی JSON) |
+| `v2raynix health` | اجرای تست زنده تاخیر زمانی HTTP و بررسی اتصال اینترنت از بستر تونل فعال |
+| `v2raynix confirm` | تایید فوری برقراری پایدار اتصال و لغو شمارش معکوس بازگشت خودکار (Safe Mode) |
+| `v2raynix rollback` | لغو و بازگردانی فوری مسیرهای شبکه در صورت بروز قطعی |
+
+### پارامترها و سوییچ‌های سرویس
+
 ```text
-Usage: v2raynix [flags]
+Usage: v2raynix [command] [options]
+       v2raynix [flags]
        v2raynix setup [subcommand flags]
 
 Flags:

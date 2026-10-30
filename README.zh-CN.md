@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/版本-v0.9.2--beta-orange.svg?style=flat-square" alt="版本"></a>
+  <a href="https://github.com/ImMahdi/V2Raynix/releases"><img src="https://img.shields.io/badge/版本-v0.9.3--beta-orange.svg?style=flat-square" alt="版本"></a>
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-%3E%3D1.23-blue.svg?style=flat-square" alt="Go 版本"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/协议-MIT-green.svg?style=flat-square" alt="开源协议"></a>
   <img src="https://img.shields.io/badge/平台-Linux%20(amd64%20%7C%20arm64)-purple.svg?style=flat-square" alt="平台">
@@ -172,8 +172,25 @@ sudo v2raynix setup
 
 ## ⚙️ CLI 命令行参数参考
 
+除了 Web 仪表盘和交互式 TUI 菜单，V2Raynix 还提供完整的无头模式（Headless）CLI 命令，便于编写脚本与服务器自动化运维。
+
+### 无头命令行操作指令 (Headless Commands)
+
+| 指令 | 说明 |
+| :--- | :--- |
+| `v2raynix list` | 列出所有已保存的节点配置及当前活跃状态 |
+| `v2raynix connect [node] [--force]` | 连接至指定节点（支持精确 ID 或节点名称子串）。`--force` 参数可直接确认并跳过安全模式提示 |
+| `v2raynix disconnect` | 断开当前全局透明代理隧道并恢复系统默认路由 |
+| `v2raynix status [--json]` | 查看后台守护进程、网络隧道、流量速率及安全模式倒计时（支持 `--json` 格式） |
+| `v2raynix health` | 通过当前活跃隧道执行真实 HTTP 连通性与网络延迟探测 |
+| `v2raynix confirm` | 立即确认网络正常，取消安全模式自动回滚倒计时并保持连接 |
+| `v2raynix rollback` | 立即放弃连接并回滚系统网络路由，防止 SSH 失联 |
+
+### 后台守护进程与服务参数
+
 ```text
-Usage: v2raynix [flags]
+Usage: v2raynix [command] [options]
+       v2raynix [flags]
        v2raynix setup [subcommand flags]
 
 Flags:
