@@ -48,6 +48,31 @@ func main() {
 		}
 	}
 
+	// Headless CLI Subcommands: connect, disconnect, status, health, check, list, confirm, rollback, help
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "connect", "disconnect", "status", "health", "check", "list", "confirm", "rollback", "help", "--help", "-h":
+			targetDir := "/etc/v2raynix"
+			if os.Geteuid() != 0 {
+				if _, err := os.Stat("/etc/v2raynix"); err != nil {
+					targetDir = "./data"
+				}
+			}
+			webPort := 2080
+			if st, err := store.New(filepath.Join(targetDir, "v2raynix.json")); err == nil {
+				if s, _ := st.GetSettings(); s != nil && s.WebPort > 0 {
+					webPort = s.WebPort
+				}
+			}
+			bridge := cli.NewTUIBridge(targetDir, webPort)
+			if err := cli.HandleCLICommand(os.Args[1:], bridge); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
+	}
+
 	// Subcommand: menu / tui
 	if len(os.Args) > 1 && (os.Args[1] == "menu" || os.Args[1] == "tui") {
 		targetDir := "/etc/v2raynix"

@@ -15,20 +15,20 @@ const (
 
 // LiveStatusInfo captures the dynamic health, traffic, and runtime state of the daemon and tunnel.
 type LiveStatusInfo struct {
-	ServiceState      string // "active", "inactive"
-	TunnelState       string // "connected", "disconnected", "connecting"
-	ConfigName        string // e.g. "EU - High Speed"
-	Protocol          string // e.g. "vless"
-	UploadSpeed       int64  // bytes per second
-	DownloadSpeed     int64  // bytes per second
-	UploadTotal       int64  // total bytes sent
-	DownloadTotal     int64  // total bytes received
-	Uptime            int64  // tunnel active duration in seconds
-	SafeModeRemaining int    // countdown seconds remaining (> 0 means active)
-	HealthState       string // "healthy", "unhealthy", "not verified"
-	HealthLatency     int64  // probe latency in milliseconds
-	WebPort           int    // web panel port
-	WebIP             string // host or binding IP
+	ServiceState      string `json:"serviceState"`
+	TunnelState       string `json:"tunnelState"`
+	ConfigName        string `json:"configName"`
+	Protocol          string `json:"protocol"`
+	UploadSpeed       int64  `json:"uploadSpeed"`
+	DownloadSpeed     int64  `json:"downloadSpeed"`
+	UploadTotal       int64  `json:"uploadTotal"`
+	DownloadTotal     int64  `json:"downloadTotal"`
+	Uptime            int64  `json:"uptime"`
+	SafeModeRemaining int    `json:"safeModeRemaining"`
+	HealthState       string `json:"healthState"`
+	HealthLatency     int64  `json:"healthLatency"`
+	WebPort           int    `json:"webPort"`
+	WebIP             string `json:"webIP"`
 }
 
 // FormatSpeed formats bytes per second into human-readable network transfer rates.
