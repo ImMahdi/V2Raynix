@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   LayoutDashboard, 
@@ -14,6 +14,17 @@ import {
 
 export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpdate, onOpenUpdateModal }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mobileMenuOpen]);
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -159,8 +170,63 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
             }
           }}
         >
-          <div className="mobile-drawer">
-            <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <div 
+            className="mobile-drawer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Drawer Header */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingBottom: '1.25rem',
+              borderBottom: '1px solid var(--border-color)',
+            }}>
+              <div 
+                style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', cursor: 'pointer' }}
+                onClick={() => {
+                  onSelectTab('dashboard');
+                  setMobileMenuOpen(false);
+                }}
+              >
+                <div style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 0 10px rgba(56, 189, 248, 0.4)',
+                }}>
+                  <ShieldCheck size={18} color="#ffffff" />
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '1.05rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  V2Raynix
+                  <span style={{ fontSize: '0.6rem', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>BETA</span>
+                </div>
+              </div>
+
+              <button 
+                className="btn btn-icon" 
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label="Close menu"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Navigation Items (Middle) */}
+            <nav style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.35rem',
+              flex: 1,
+              paddingTop: '1.25rem',
+              paddingBottom: '1.25rem',
+              overflowY: 'auto',
+            }}>
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
@@ -195,9 +261,9 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
               })}
             </nav>
 
+            {/* Drawer Footer (Bottom) */}
             <div style={{ 
-              marginTop: '0.5rem', 
-              paddingTop: '0.75rem', 
+              paddingTop: '1rem', 
               borderTop: '1px solid var(--border-color)',
               display: 'flex',
               flexDirection: 'column',
@@ -234,7 +300,7 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'space-between',
-                padding: '0.5rem 0.25rem'
+                padding: '0.25rem 0'
               }}>
                 <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
                   <span style={{ color: 'var(--text-muted)' }}>user:</span>{' '}
