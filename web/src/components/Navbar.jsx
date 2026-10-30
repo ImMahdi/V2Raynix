@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, 
   LayoutDashboard, 
   Layers, 
   GitFork, 
@@ -70,7 +69,7 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
             justifyContent: 'center',
             boxShadow: '0 0 15px rgba(56, 189, 248, 0.4)',
           }}>
-            <ShieldCheck size={22} color="#ffffff" />
+            <Zap size={20} fill="#ffffff" color="#ffffff" />
           </div>
           <div>
             <div style={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -199,7 +198,7 @@ export default function Navbar({ activeTab, onSelectTab, user, onLogout, hasUpda
                   justifyContent: 'center',
                   boxShadow: '0 0 10px rgba(56, 189, 248, 0.4)',
                 }}>
-                  <ShieldCheck size={18} color="#ffffff" />
+                  <Zap size={18} fill="#ffffff" color="#ffffff" />
                 </div>
                 <div style={{ fontWeight: 700, fontSize: '1.05rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   V2Raynix
