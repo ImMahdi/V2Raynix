@@ -235,3 +235,96 @@ func TestHandleServiceMenu_CheckCoreUpdatesWithUpgrade(t *testing.T) {
 	}
 }
 
+func TestHandleSettingsMenu_ChangeWebPort_Cancel(t *testing.T) {
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "\n"} {
+		mock := &mockSettingsServiceBridge{}
+		input := "1\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleSettingsMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mock.savedSettings != nil {
+			t.Fatalf("expected SaveSettings not called on cancel input %q", cancelInput)
+		}
+	}
+}
+
+func TestHandleSettingsMenu_ChangeCredentials_Cancel(t *testing.T) {
+	// Cancel at username prompt
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "\n"} {
+		mock := &mockSettingsServiceBridge{}
+		input := "2\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleSettingsMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mock.appliedUsername != "" || mock.appliedPassword != "" {
+			t.Fatalf("expected credentials not applied on cancel input %q at username prompt", cancelInput)
+		}
+	}
+
+	// Cancel at password prompt
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "\n"} {
+		mock := &mockSettingsServiceBridge{}
+		input := "2\nnewadmin\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleSettingsMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mock.appliedUsername != "" || mock.appliedPassword != "" {
+			t.Fatalf("expected credentials not applied on cancel input %q at password prompt", cancelInput)
+		}
+	}
+}
+
+func TestHandleSettingsMenu_ConfigureWatchdog_Cancel(t *testing.T) {
+	// Cancel at interval prompt
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "\n"} {
+		mock := &mockSettingsServiceBridge{
+			settings: &store.SystemSettings{
+				WebPort:                    2080,
+				HealthCheckIntervalMinutes: 5,
+				HealthCheckURL:             "https://www.google.com/generate_204",
+			},
+		}
+		input := "3\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleSettingsMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mock.savedSettings != nil {
+			t.Fatalf("expected SaveSettings not called when cancelled at interval prompt with %q", cancelInput)
+		}
+	}
+
+	// Cancel at URL prompt
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "\n"} {
+		mock := &mockSettingsServiceBridge{
+			settings: &store.SystemSettings{
+				WebPort:                    2080,
+				HealthCheckIntervalMinutes: 5,
+				HealthCheckURL:             "https://www.google.com/generate_204",
+			},
+		}
+		input := "3\n10\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleSettingsMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mock.savedSettings != nil {
+			t.Fatalf("expected SaveSettings not called when cancelled at URL prompt with %q", cancelInput)
+		}
+	}
+}
+
+

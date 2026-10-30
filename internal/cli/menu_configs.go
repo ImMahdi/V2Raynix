@@ -128,13 +128,14 @@ func handleListConfigsDetailed(configs []store.ConfigItem, activeID string, read
 }
 
 func handleAddConfig(bridge TUIBridge, reader *bufio.Reader) {
-	fmt.Print("\nEnter share link (vless://, vmess://, trojan://, ss://) or raw JSON:\n> ")
+	fmt.Print("\nEnter share link (vless://, vmess://, trojan://, ss://) or raw JSON [or enter '0' / 'b' to cancel]:\n> ")
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	trimmed := strings.TrimSpace(input)
-	if trimmed == "0" || strings.ToLower(trimmed) == "b" || trimmed == "" {
+	if IsCancelInput(trimmed) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
 		return
 	}
 
@@ -156,13 +157,14 @@ func handleDeleteConfig(bridge TUIBridge, configs []store.ConfigItem, reader *bu
 		return
 	}
 
-	fmt.Printf("\nSelect configuration to delete [1-%d] or 0 to cancel: ", len(configs))
+	fmt.Printf("\nSelect configuration to delete [1-%d] (or 0 / b to cancel): ", len(configs))
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	trimmed := strings.TrimSpace(input)
-	if trimmed == "0" || strings.ToLower(trimmed) == "b" || trimmed == "" {
+	if IsCancelInput(trimmed) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
 		return
 	}
 
@@ -186,13 +188,14 @@ func handleSetActiveConfig(bridge TUIBridge, configs []store.ConfigItem, reader 
 		return
 	}
 
-	fmt.Printf("\nSelect configuration to set as active [1-%d] or 0 to cancel: ", len(configs))
+	fmt.Printf("\nSelect configuration to set as active [1-%d] (or 0 / b to cancel): ", len(configs))
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	trimmed := strings.TrimSpace(input)
-	if trimmed == "0" || strings.ToLower(trimmed) == "b" || trimmed == "" {
+	if IsCancelInput(trimmed) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
 		return
 	}
 

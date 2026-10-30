@@ -82,13 +82,14 @@ func HandleSettingsMenu(bridge TUIBridge, reader *bufio.Reader) error {
 }
 
 func handleChangeWebPort(bridge TUIBridge, reader *bufio.Reader, currentSettings *store.SystemSettings) {
-	fmt.Printf("\nEnter new Web Port [1-65535] (current: %d): ", currentSettings.WebPort)
+	fmt.Printf("\nEnter new port (1-65535) [current %d, or '0' / 'b' to cancel]: ", currentSettings.WebPort)
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	trimmed := strings.TrimSpace(input)
-	if trimmed == "" || trimmed == "0" || strings.ToLower(trimmed) == "b" {
+	if IsCancelInput(trimmed) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
 		return
 	}
 	port, err := strconv.Atoi(trimmed)
@@ -105,24 +106,25 @@ func handleChangeWebPort(bridge TUIBridge, reader *bufio.Reader, currentSettings
 }
 
 func handleChangeCredentials(bridge TUIBridge, reader *bufio.Reader) {
-	fmt.Print("\nEnter new admin username (press Enter to keep 'admin'): ")
+	fmt.Print("\nEnter new admin username (or '0' / 'b' to cancel): ")
 	username, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	username = strings.TrimSpace(username)
-	if username == "" {
-		username = "admin"
+	if IsCancelInput(username) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
+		return
 	}
 
-	fmt.Print("Enter new admin password: ")
+	fmt.Print("Enter new admin password (or '0' / 'b' to cancel): ")
 	password, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	password = strings.TrimSpace(password)
-	if password == "" {
-		fmt.Printf("%sPassword cannot be empty. Aborting credential change.%s\n", AnsiRed, AnsiReset)
+	if IsCancelInput(password) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
 		return
 	}
 
@@ -134,30 +136,35 @@ func handleChangeCredentials(bridge TUIBridge, reader *bufio.Reader) {
 }
 
 func handleConfigureWatchdog(bridge TUIBridge, reader *bufio.Reader, currentSettings *store.SystemSettings) {
-	fmt.Printf("\nEnter Watchdog interval in minutes (0 to disable, current: %d): ", currentSettings.HealthCheckIntervalMinutes)
+	fmt.Printf("\nEnter Watchdog interval in minutes [current %d, or '0' / 'b' to cancel]: ", currentSettings.HealthCheckIntervalMinutes)
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	trimmed := strings.TrimSpace(input)
-	if trimmed != "" {
-		interval, err := strconv.Atoi(trimmed)
-		if err != nil || interval < 0 {
-			fmt.Printf("%sInvalid interval '%s'. Must be >= 0.%s\n", AnsiRed, trimmed, AnsiReset)
-			return
-		}
-		currentSettings.HealthCheckIntervalMinutes = interval
+	if IsCancelInput(trimmed) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
+		return
 	}
 
-	fmt.Printf("Enter Watchdog target test URL (current: %s): ", currentSettings.HealthCheckURL)
+	interval, err := strconv.Atoi(trimmed)
+	if err != nil || interval <= 0 {
+		fmt.Printf("%sInvalid interval '%s'. Must be a positive integer.%s\n", AnsiRed, trimmed, AnsiReset)
+		return
+	}
+	currentSettings.HealthCheckIntervalMinutes = interval
+
+	fmt.Printf("Enter Watchdog target test URL [current: %s, or '0' / 'b' to cancel]: ", currentSettings.HealthCheckURL)
 	urlInput, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	trimmedURL := strings.TrimSpace(urlInput)
-	if trimmedURL != "" {
-		currentSettings.HealthCheckURL = trimmedURL
+	if IsCancelInput(trimmedURL) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
+		return
 	}
+	currentSettings.HealthCheckURL = trimmedURL
 
 	if err := bridge.SaveSettings(currentSettings); err != nil {
 		fmt.Printf("%sFailed to save watchdog settings: %v%s\n", AnsiRed, err, AnsiReset)

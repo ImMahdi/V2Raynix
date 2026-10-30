@@ -236,3 +236,127 @@ func TestHandleRoutingMenu_AddAndDeleteRule(t *testing.T) {
 		t.Errorf("expected deletedRuleID == 'rule-existing-1', got %q", mock.deletedRuleID)
 	}
 }
+
+func TestHandleConfigsMenu_AddConfig_Cancel(t *testing.T) {
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "cancel\n", "\n"} {
+		mock := &mockConfigsRoutingBridge{}
+		input := "2\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleConfigsMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error on cancel input %q: %v", cancelInput, err)
+		}
+		if mock.addedLink != "" {
+			t.Fatalf("expected AddConfigFromLink not called on cancel input %q, got %q", cancelInput, mock.addedLink)
+		}
+	}
+}
+
+func TestHandleConfigsMenu_DeleteConfig_Cancel(t *testing.T) {
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "\n"} {
+		mock := &mockConfigsRoutingBridge{
+			configs: []store.ConfigItem{
+				{ID: "cfg-1", Name: "Node One"},
+			},
+		}
+		input := "3\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleConfigsMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error on cancel input %q: %v", cancelInput, err)
+		}
+		if mock.deletedConfigID != "" {
+			t.Fatalf("expected DeleteConfig not called on cancel input %q, got %q", cancelInput, mock.deletedConfigID)
+		}
+	}
+}
+
+func TestHandleConfigsMenu_SetActiveConfig_Cancel(t *testing.T) {
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "\n"} {
+		mock := &mockConfigsRoutingBridge{
+			configs: []store.ConfigItem{
+				{ID: "cfg-1", Name: "Node One"},
+			},
+		}
+		input := "4\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleConfigsMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error on cancel input %q: %v", cancelInput, err)
+		}
+		if mock.setActiveConfigID != "" {
+			t.Fatalf("expected SetActiveConfig not called on cancel input %q, got %q", cancelInput, mock.setActiveConfigID)
+		}
+	}
+}
+
+func TestHandleRoutingMenu_AddRule_Cancel(t *testing.T) {
+	// Cancel at Target Type
+	for _, cancelInput := range []string{"0\n", "b\n", "cancel\n", "\n"} {
+		mock := &mockConfigsRoutingBridge{}
+		input := "2\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleRoutingMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mock.addedRule.Target != "" {
+			t.Fatalf("expected AddRule not called when cancelled at target type, got %q", mock.addedRule.Target)
+		}
+	}
+
+	// Cancel at Pattern
+	for _, cancelInput := range []string{"0\n", "b\n", "cancel\n", "\n"} {
+		mock := &mockConfigsRoutingBridge{}
+		input := "2\n1\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleRoutingMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mock.addedRule.Target != "" {
+			t.Fatalf("expected AddRule not called when cancelled at pattern, got %q", mock.addedRule.Target)
+		}
+	}
+
+	// Cancel at Action
+	for _, cancelInput := range []string{"0\n", "b\n", "cancel\n", "\n"} {
+		mock := &mockConfigsRoutingBridge{}
+		input := "2\n1\nexample.com\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleRoutingMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mock.addedRule.Target != "" {
+			t.Fatalf("expected AddRule not called when cancelled at action, got %q", mock.addedRule.Target)
+		}
+	}
+}
+
+func TestHandleRoutingMenu_DeleteRule_Cancel(t *testing.T) {
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "\n"} {
+		mock := &mockConfigsRoutingBridge{
+			rules: []store.RoutingRule{
+				{ID: "rule-1", Target: "example.com", Action: "direct"},
+			},
+		}
+		input := "4\n" + cancelInput + "0\n"
+		reader := bufio.NewReader(strings.NewReader(input))
+
+		err := HandleRoutingMenu(mock, reader)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mock.deletedRuleID != "" {
+			t.Fatalf("expected DeleteRule not called on cancel input %q, got %q", cancelInput, mock.deletedRuleID)
+		}
+	}
+}
+

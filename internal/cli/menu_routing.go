@@ -76,7 +76,7 @@ func HandleRoutingMenu(bridge TUIBridge, reader *bufio.Reader) error {
 		case "1":
 			handleViewRulesDetailed(rules, reader)
 		case "2":
-			handleAddRule(bridge, reader)
+			handleAddCustomRule(bridge, reader)
 		case "3":
 			handleApplyPresets(bridge)
 		case "4":
@@ -134,14 +134,15 @@ func handleViewRulesDetailed(rules []store.RoutingRule, reader *bufio.Reader) {
 	_, _ = reader.ReadString('\n')
 }
 
-func handleAddRule(bridge TUIBridge, reader *bufio.Reader) {
-	fmt.Print("\nSelect Target Type:\n [1] Domain / GeoSite\n [2] IP / GeoIP / CIDR\nSelect [1-2] or 0 to cancel: ")
+func handleAddCustomRule(bridge TUIBridge, reader *bufio.Reader) {
+	fmt.Print("\nSelect Target Type:\n [1] Domain / GeoSite\n [2] IP / GeoIP / CIDR\nSelect [1-2] (or '0' / 'b' to cancel): ")
 	typeInput, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	typeTrimmed := strings.TrimSpace(typeInput)
-	if typeTrimmed == "0" || strings.ToLower(typeTrimmed) == "b" || typeTrimmed == "" {
+	if IsCancelInput(typeTrimmed) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
 		return
 	}
 
@@ -153,23 +154,25 @@ func handleAddRule(bridge TUIBridge, reader *bufio.Reader) {
 		return
 	}
 
-	fmt.Print("\nEnter pattern (e.g. google.com, geosite:category-ir, 10.0.0.0/8, geoip:ir):\n> ")
+	fmt.Print("\nEnter target domain/IP pattern (or '0' / 'b' to cancel):\n> ")
 	targetInput, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	target := strings.TrimSpace(targetInput)
-	if target == "0" || strings.ToLower(target) == "b" || target == "" {
+	if IsCancelInput(target) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
 		return
 	}
 
-	fmt.Print("\nSelect Action:\n [1] DIRECT (Bypass tunnel)\n [2] PROXY (Route through tunnel)\n [3] BLOCK (Drop / Reject)\nSelect [1-3] or 0 to cancel: ")
+	fmt.Print("\nSelect Action:\n [1] DIRECT (Bypass tunnel)\n [2] PROXY (Route through tunnel)\n [3] BLOCK (Drop / Reject)\nSelect action [1-3] (or '0' / 'b' to cancel): ")
 	actionInput, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	actionTrimmed := strings.TrimSpace(actionInput)
-	if actionTrimmed == "0" || strings.ToLower(actionTrimmed) == "b" || actionTrimmed == "" {
+	if IsCancelInput(actionTrimmed) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
 		return
 	}
 
@@ -202,6 +205,10 @@ func handleAddRule(bridge TUIBridge, reader *bufio.Reader) {
 	}
 }
 
+func handleAddRule(bridge TUIBridge, reader *bufio.Reader) {
+	handleAddCustomRule(bridge, reader)
+}
+
 func handleApplyPresets(bridge TUIBridge) {
 	fmt.Println("\nApplying Iran bypass and ad blocking presets...")
 	if err := bridge.ApplyPresets(); err != nil {
@@ -217,13 +224,14 @@ func handleDeleteRule(bridge TUIBridge, rules []store.RoutingRule, reader *bufio
 		return
 	}
 
-	fmt.Printf("\nSelect rule to delete [1-%d] or 0 to cancel: ", len(rules))
+	fmt.Printf("\nSelect rule to delete [1-%d] (or 0 / b to cancel): ", len(rules))
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return
 	}
 	trimmed := strings.TrimSpace(input)
-	if trimmed == "0" || strings.ToLower(trimmed) == "b" || trimmed == "" {
+	if IsCancelInput(trimmed) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
 		return
 	}
 
