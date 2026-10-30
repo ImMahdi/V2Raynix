@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import {
   Power,
-  Shield,
-  Activity,
   Network,
   Clock,
   HeartPulse,
@@ -108,7 +106,7 @@ export default function DashboardView({
         className="grid-stats"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
           gap: '1rem',
           marginTop: '1.5rem',
         }}
@@ -309,43 +307,6 @@ export default function DashboardView({
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
               {isConnected ? `Interface: ${status?.tunInterface || 'tun0'}` : 'Tunnel offline'}
-            </div>
-          </div>
-        </div>
-
-        {/* Security & Safe Mode Card */}
-        <div
-          className="glass-card"
-          style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
-        >
-          <div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                color: 'var(--text-muted)',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                marginBottom: '0.5rem',
-              }}
-            >
-              <span>SSH Protection</span>
-              <Shield size={16} color="#34d399" />
-            </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#34d399' }}>
-              Anti-Lockout Active
-            </div>
-            <div
-              style={{
-                fontSize: '0.8rem',
-                color: 'var(--text-muted)',
-                marginTop: '0.25rem',
-                lineHeight: 1.4,
-              }}
-            >
-              Port 22 &amp; Web UI automatically bypass tun0 to ensure server access is never lost.
             </div>
           </div>
         </div>
