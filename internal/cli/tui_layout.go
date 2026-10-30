@@ -275,7 +275,7 @@ func RenderTable(headers []string, rows [][]string, widths []int) string {
 	return sb.String()
 }
 
-// RenderStatusHeader renders a live status card with service bullet, tunnel state, traffic, uptime, and safe mode.
+// RenderStatusHeader renders a live status card with service bullet, tunnel state, uptime, safe mode, health, and web UI.
 func RenderStatusHeader(info LiveStatusInfo) string {
 	serviceStr := fmt.Sprintf("%s● Service: Active%s", AnsiGreen, AnsiReset)
 	if strings.ToLower(info.ServiceState) != "active" {
@@ -303,17 +303,12 @@ func RenderStatusHeader(info LiveStatusInfo) string {
 
 	line1 := fmt.Sprintf("%s    %s", serviceStr, tunnelStr)
 
-	trafficStr := fmt.Sprintf("Traffic: ▲ %s  ▼ %s", FormatSpeed(info.UploadSpeed), FormatSpeed(info.DownloadSpeed))
-	if info.UploadTotal > 0 || info.DownloadTotal > 0 {
-		trafficStr += fmt.Sprintf("  (Tot: ▲ %s  ▼ %s)", FormatBytes(info.UploadTotal), FormatBytes(info.DownloadTotal))
-	}
-
 	uptimeStr := fmt.Sprintf("Uptime: %s", FormatDuration(info.Uptime))
 	safeModeStr := "Safe Mode: Inactive"
 	if info.SafeModeRemaining > 0 {
 		safeModeStr = fmt.Sprintf("%sSafe Mode: Active (%ds remaining)%s", AnsiYellow, info.SafeModeRemaining, AnsiReset)
 	}
-	line3 := fmt.Sprintf("%s    %s", uptimeStr, safeModeStr)
+	line2 := fmt.Sprintf("%s    %s", uptimeStr, safeModeStr)
 
 	healthStr := ""
 	switch strings.ToLower(info.HealthState) {
@@ -337,12 +332,12 @@ func RenderStatusHeader(info LiveStatusInfo) string {
 		}
 		webURL = fmt.Sprintf("Web UI: http://%s:%d", ip, info.WebPort)
 	}
-	line4 := healthStr
+	line3 := healthStr
 	if webURL != "" {
-		line4 = fmt.Sprintf("%s    %s", healthStr, webURL)
+		line3 = fmt.Sprintf("%s    %s", healthStr, webURL)
 	}
 
-	lines := []string{line1, trafficStr, line3, line4}
+	lines := []string{line1, line2, line3}
 	return RenderBox("V2Raynix System Status", lines, 74)
 }
 

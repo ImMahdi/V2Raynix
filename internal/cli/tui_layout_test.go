@@ -114,11 +114,6 @@ func TestRenderStatusHeader(t *testing.T) {
 		t.Errorf("expected connected tunnel info, got:\n%s", out)
 	}
 
-	// Verify traffic
-	if !strings.Contains(out, "1.0 MB/s") || !strings.Contains(out, "2.5 MB/s") {
-		t.Errorf("expected upload/download speeds in status header, got:\n%s", out)
-	}
-
 	// Verify uptime
 	if !strings.Contains(out, "1h 1m") {
 		t.Errorf("expected uptime '1h 1m' in status header, got:\n%s", out)
@@ -127,6 +122,41 @@ func TestRenderStatusHeader(t *testing.T) {
 	// Verify safe mode
 	if !strings.Contains(out, "Safe Mode") || !strings.Contains(out, "45s") {
 		t.Errorf("expected active Safe Mode info with remaining seconds, got:\n%s", out)
+	}
+}
+
+func TestRenderStatusHeader_NoTrafficLine(t *testing.T) {
+	info := LiveStatusInfo{
+		ServiceState:      "active",
+		TunnelState:       "connected",
+		ConfigName:        "Test Node",
+		Protocol:          "vless",
+		UploadSpeed:       1024,
+		DownloadSpeed:     2048,
+		Uptime:            120,
+		SafeModeRemaining: 60,
+		HealthState:       "healthy",
+		HealthLatency:     25,
+		WebPort:           2080,
+		WebIP:             "127.0.0.1",
+	}
+
+	out := RenderStatusHeader(info)
+
+	if strings.Contains(out, "Traffic:") {
+		t.Errorf("expected status header NOT to contain 'Traffic:', got:\n%s", out)
+	}
+	if !strings.Contains(out, "Service:") {
+		t.Errorf("expected 'Service:' in status header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Tunnel:") {
+		t.Errorf("expected 'Tunnel:' in status header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Uptime:") {
+		t.Errorf("expected 'Uptime:' in status header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Health:") {
+		t.Errorf("expected 'Health:' in status header, got:\n%s", out)
 	}
 }
 
