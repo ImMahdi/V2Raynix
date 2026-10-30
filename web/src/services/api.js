@@ -48,10 +48,11 @@ export async function request(endpoint, options = {}) {
 
   const controller = new AbortController();
   let timedOut = false;
+  const timeout = options.timeout !== undefined ? options.timeout : 15000;
   const timeoutId = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, 10000);
+  }, timeout);
 
   if (options.signal) {
     if (options.signal.aborted) {
@@ -148,7 +149,7 @@ export const api = {
   // System Updates
   getSystemUpdates: () => request('/system/updates'),
   checkSystemUpdates: () => request('/system/check-updates', { method: 'POST' }),
-  updateCore: (core) => request('/system/update-core', { method: 'POST', body: JSON.stringify({ core }) }),
+  updateCore: (core) => request('/system/update-core', { method: 'POST', body: JSON.stringify({ core }), timeout: 180000 }),
 };
 
 

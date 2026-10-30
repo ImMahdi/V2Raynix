@@ -55,15 +55,16 @@ type TUIBridge interface {
 }
 
 type bridgeImpl struct {
-	dataDir    string
-	webPort    int
-	baseURL    string
-	store      store.Store
-	username   string
-	password   string
-	token      string
-	httpClient *http.Client
-	mu         sync.Mutex
+	dataDir      string
+	webPort      int
+	baseURL      string
+	store        store.Store
+	username     string
+	password     string
+	token        string
+	httpClient   *http.Client
+	updateClient *http.Client
+	mu           sync.Mutex
 }
 
 // NewTUIBridge initializes a dual-mode bridge.
@@ -97,14 +98,15 @@ func NewTUIBridge(dataDir string, webPort int) TUIBridge {
 	}
 
 	return &bridgeImpl{
-		dataDir:    dataDir,
-		webPort:    resolvedPort,
-		baseURL:    fmt.Sprintf("http://127.0.0.1:%d", resolvedPort),
-		store:      st,
-		username:   adminUser,
-		password:   "admin",
-		token:      initToken,
-		httpClient: &http.Client{Timeout: 5 * time.Second},
+		dataDir:      dataDir,
+		webPort:      resolvedPort,
+		baseURL:      fmt.Sprintf("http://127.0.0.1:%d", resolvedPort),
+		store:        st,
+		username:     adminUser,
+		password:     "admin",
+		token:        initToken,
+		httpClient:   &http.Client{Timeout: 5 * time.Second},
+		updateClient: &http.Client{Timeout: 180 * time.Second},
 	}
 }
 
@@ -180,6 +182,13 @@ func (b *bridgeImpl) login() error {
 }
 
 func (b *bridgeImpl) doRequest(method, path string, reqBody interface{}, respTarget interface{}) error {
+	return b.doRequestWithClient(b.httpClient, method, path, reqBody, respTarget)
+}
+
+func (b *bridgeImpl) doRequestWithClient(client *http.Client, method, path string, reqBody interface{}, respTarget interface{}) error {
+	if client == nil {
+		client = b.httpClient
+	}
 	if b.token == "" {
 		if err := b.login(); err != nil {
 			return err
@@ -205,7 +214,7 @@ func (b *bridgeImpl) doRequest(method, path string, reqBody interface{}, respTar
 		if b.token != "" {
 			req.Header.Set("Authorization", "Bearer "+b.token)
 		}
-		return b.httpClient.Do(req)
+		return client.Do(req)
 	}
 
 	resp, err := execReq()
@@ -624,7 +633,11 @@ func (b *bridgeImpl) CheckCoreUpdates() (*updater.UpdateStatus, error) {
 
 func (b *bridgeImpl) UpdateCore(engine string) error {
 	if b.IsDaemonRunning() {
-		return b.doRequest(http.MethodPost, "/api/system/update-core", map[string]string{"core": engine}, nil)
+		client := b.updateClient
+		if client == nil {
+			client = &http.Client{Timeout: 180 * time.Second}
+		}
+		return b.doRequestWithClient(client, http.MethodPost, "/api/system/update-core", map[string]string{"core": engine}, nil)
 	}
 
 	upd := updater.NewUpdater(b.dataDir)

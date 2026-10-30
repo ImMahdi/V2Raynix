@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/v2raynix/v2raynix/internal/store"
 )
@@ -334,3 +335,47 @@ func TestTUIBridge_LiveDaemonMode(t *testing.T) {
 		t.Errorf("unexpected log message: %q", logs[0].Message)
 	}
 }
+
+func TestBridge_UpdateCoreTimeout(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/status", "/api/tunnel/status":
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"state": "disconnected",
+			})
+			return
+		case "/api/auth/login":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"token": "mock-token-update",
+			})
+			return
+		case "/api/system/update-core":
+			// Sleep 6 seconds to exceed the standard 5-second client timeout
+			time.Sleep(6 * time.Second)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"message": "core updated successfully",
+			})
+			return
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	bridge := NewTUIBridge(tmpDir, port)
+	bridge.SetBaseURL(server.URL)
+
+	err := bridge.UpdateCore("xray")
+	if err != nil {
+		t.Fatalf("expected UpdateCore to succeed without timeout, got error: %v", err)
+	}
+}
+
