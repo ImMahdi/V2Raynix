@@ -137,8 +137,8 @@ func TestHandleTunnelMenu_ConnectAndDisconnect(t *testing.T) {
 		},
 	}
 
-	// 1. Connect -> select config 1 -> then back
-	inputConnect := "1\n1\n0\n"
+	// 1. Connect -> select config 1 -> guard option 0 (back) -> tunnel menu option 0 (back)
+	inputConnect := "1\n1\n0\n0\n"
 	readerConnect := bufio.NewReader(strings.NewReader(inputConnect))
 
 	err := HandleTunnelMenu(mock, readerConnect)
@@ -192,6 +192,110 @@ func TestHandleTunnelMenu_HealthCheckAndSafeMode(t *testing.T) {
 	}
 	if !mock.rollbackSafeModeCalled {
 		t.Errorf("expected RollbackSafeMode to be called")
+	}
+}
+
+func TestHandleConnectConfig_SafeModeGuard_Confirm(t *testing.T) {
+	mock := &mockTunnelLogsBridge{
+		status: LiveStatusInfo{
+			ServiceState:      "active",
+			TunnelState:       "connected",
+			SafeModeRemaining: 120,
+		},
+		configs: []store.ConfigItem{
+			{
+				ID:       "cfg-1",
+				Name:     "Frankfurt High Speed",
+				Protocol: "vless",
+				Server:   "de.example.com",
+				Port:     443,
+			},
+		},
+	}
+
+	// 1: Connect config -> 1: select cfg-1 -> 2: Confirm safe mode -> 0: exit tunnel menu
+	input := "1\n1\n2\n0\n"
+	reader := bufio.NewReader(strings.NewReader(input))
+
+	err := HandleTunnelMenu(mock, reader)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mock.connectedConfigID != "cfg-1" {
+		t.Errorf("expected connectedConfigID == 'cfg-1', got %q", mock.connectedConfigID)
+	}
+	if !mock.confirmSafeModeCalled {
+		t.Errorf("expected ConfirmSafeMode to be called")
+	}
+}
+
+func TestHandleConnectConfig_SafeModeGuard_Rollback(t *testing.T) {
+	mock := &mockTunnelLogsBridge{
+		status: LiveStatusInfo{
+			ServiceState:      "active",
+			TunnelState:       "connected",
+			SafeModeRemaining: 120,
+		},
+		configs: []store.ConfigItem{
+			{
+				ID:       "cfg-1",
+				Name:     "Frankfurt High Speed",
+				Protocol: "vless",
+				Server:   "de.example.com",
+				Port:     443,
+			},
+		},
+	}
+
+	// 1: Connect config -> 1: select cfg-1 -> 3: Rollback safe mode -> 0: exit tunnel menu
+	input := "1\n1\n3\n0\n"
+	reader := bufio.NewReader(strings.NewReader(input))
+
+	err := HandleTunnelMenu(mock, reader)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mock.connectedConfigID != "cfg-1" {
+		t.Errorf("expected connectedConfigID == 'cfg-1', got %q", mock.connectedConfigID)
+	}
+	if !mock.rollbackSafeModeCalled {
+		t.Errorf("expected RollbackSafeMode to be called")
+	}
+}
+
+func TestHandleConnectConfig_SafeModeGuard_ProbeHealth(t *testing.T) {
+	mock := &mockTunnelLogsBridge{
+		status: LiveStatusInfo{
+			ServiceState:      "active",
+			TunnelState:       "connected",
+			SafeModeRemaining: 110,
+		},
+		configs: []store.ConfigItem{
+			{
+				ID:       "cfg-1",
+				Name:     "Frankfurt High Speed",
+				Protocol: "vless",
+				Server:   "de.example.com",
+				Port:     443,
+			},
+		},
+		healthHealthy: true,
+		healthLatency: 95,
+	}
+
+	// 1: Connect config -> 1: select cfg-1 -> 1: Probe health -> 2: Confirm safe mode -> 0: exit tunnel menu
+	input := "1\n1\n1\n2\n0\n"
+	reader := bufio.NewReader(strings.NewReader(input))
+
+	err := HandleTunnelMenu(mock, reader)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !mock.checkHealthCalled {
+		t.Errorf("expected CheckHealth to be called")
+	}
+	if !mock.confirmSafeModeCalled {
+		t.Errorf("expected ConfirmSafeMode to be called after probe")
 	}
 }
 

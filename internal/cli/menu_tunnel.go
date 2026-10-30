@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"strings"
+
+	"github.com/v2raynix/v2raynix/internal/store"
 )
 
 // HandleTunnelMenu manages the Tunnel & Connectivity Operations submenu (Menu 1).
@@ -111,6 +113,76 @@ func handleConnectConfig(bridge TUIBridge, reader *bufio.Reader) {
 		fmt.Printf("%sFailed to connect: %v%s\n", AnsiRed, err, AnsiReset)
 	} else {
 		fmt.Printf("%sSuccessfully connected to %s!%s\n", AnsiGreen, selected.Name, AnsiReset)
+		_ = handleSafeModeGuard(bridge, reader, selected)
+	}
+}
+
+// handleSafeModeGuard presents an interactive verification screen immediately after tunnel connection.
+func handleSafeModeGuard(bridge TUIBridge, reader *bufio.Reader, selected store.ConfigItem) error {
+	for {
+		status, err := bridge.GetStatus()
+		if err != nil {
+			status = LiveStatusInfo{
+				ServiceState: "error",
+				TunnelState:  "unknown",
+			}
+		}
+
+		remainingText := fmt.Sprintf("%ds remaining", status.SafeModeRemaining)
+		if status.SafeModeRemaining <= 0 {
+			remainingText = "Inactive / Expired"
+		}
+
+		lines := []string{
+			fmt.Sprintf(" Active Config : %s%s%s (%s)", AnsiGreen, selected.Name, AnsiReset, selected.Protocol),
+			fmt.Sprintf(" Safe Mode     : %s%s%s (automatic rollback on timeout)", AnsiYellow, remainingText, AnsiReset),
+			fmt.Sprintf(" %sVerify network connectivity before confirming safe mode!%s", AnsiDim, AnsiReset),
+			"",
+			fmt.Sprintf(" %s[1]%s Probe Health & Latency (Verify connection)", AnsiCyan, AnsiReset),
+			fmt.Sprintf(" %s[2]%s Confirm Safe Mode (Make permanent & keep tunnel)", AnsiGreen, AnsiReset),
+			fmt.Sprintf(" %s[3]%s Emergency Rollback (Abort & restore original routes)", AnsiRed, AnsiReset),
+			fmt.Sprintf(" %s[0]%s Back to Tunnel Menu (leaves countdown running in background)", AnsiYellow, AnsiReset),
+		}
+
+		fmt.Println()
+		fmt.Print(RenderBox("Safe Mode Verification Guard", lines, 74))
+
+		choice, err := ReadMenuChoice("\nSelect an option [0-3]: ", []string{"0", "1", "2", "3"}, reader)
+		if err != nil {
+			return err
+		}
+
+		switch choice {
+		case "0", "b":
+			fmt.Printf("\n%sReturning to Tunnel Menu. Safe Mode countdown continues in background.%s\n", AnsiYellow, AnsiReset)
+			return nil
+		case "1":
+			fmt.Println("\nRunning immediate health check probe...")
+			healthy, latency, err := bridge.CheckHealth()
+			if err != nil {
+				fmt.Printf("%sHealth check probe error: %v%s\n", AnsiRed, err, AnsiReset)
+			} else if healthy {
+				fmt.Printf("%s● Health Check: PASSED (%dms)%s\n", AnsiGreen, latency, AnsiReset)
+			} else {
+				fmt.Printf("%s● Health Check: FAILED%s\n", AnsiRed, AnsiReset)
+			}
+		case "2":
+			fmt.Println("\nConfirming Safe Mode changes...")
+			if err := bridge.ConfirmSafeMode(); err != nil {
+				fmt.Printf("%sFailed to confirm Safe Mode: %v%s\n", AnsiRed, err, AnsiReset)
+				return err
+			}
+			fmt.Printf("%sSafe Mode confirmed! Routing configuration is permanent.%s\n", AnsiGreen, AnsiReset)
+			return nil
+		case "3":
+			fmt.Println("\nRolling back Safe Mode...")
+			if err := bridge.RollbackSafeMode(); err != nil {
+				fmt.Printf("%sFailed to rollback Safe Mode: %v%s\n", AnsiRed, err, AnsiReset)
+				return err
+			}
+			fmt.Printf("%sSafe Mode rolled back to previous configuration.%s\n", AnsiYellow, AnsiReset)
+			return nil
+		}
 	}
 }
 
