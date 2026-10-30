@@ -592,7 +592,7 @@ func (rl *loginRateLimiter) reset(ip string) {
 
 func (r *Router) handleGetUpdates(w http.ResponseWriter, req *http.Request) {
 	status := r.deps.Updater.GetStatus()
-	if len(status.Cores) == 0 {
+	if !status.IsUpdating && len(status.Cores) == 0 {
 		status, _ = r.deps.Updater.CheckUpdates(false)
 	}
 	writeJSON(w, http.StatusOK, status)
@@ -609,7 +609,8 @@ func (r *Router) handleCheckUpdates(w http.ResponseWriter, req *http.Request) {
 
 func (r *Router) handleUpdateCore(w http.ResponseWriter, req *http.Request) {
 	var body struct {
-		Core string `json:"core"`
+		Core  string `json:"core"`
+		Async bool   `json:"async"`
 	}
 	if err := decodeJSON(w, req, defaultMaxBodyBytes, &body, "invalid request body"); err != nil {
 		return
@@ -621,8 +622,31 @@ func (r *Router) handleUpdateCore(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	isAsync := body.Async || strings.EqualFold(req.URL.Query().Get("async"), "true")
+	if isAsync {
+		err := r.deps.Updater.StartAsyncUpdate(body.Core)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "already in progress") {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{
+			"status":  "updating",
+			"message": "update started in background",
+			"core":    body.Core,
+		})
+		return
+	}
+
 	err := r.deps.Updater.UpdateCore(body.Core)
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "already in progress") {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}

@@ -31,7 +31,9 @@ type UpdateStatus struct {
 	Cores         map[string]CoreInfo `json:"cores"`
 	LastCheckedAt string              `json:"last_checked_at"`
 	IsUpdating    bool                `json:"is_updating"`
+	CurrentEngine string              `json:"current_engine"`
 	LastLog       string              `json:"last_log"`
+	LastError     string              `json:"last_error"`
 }
 
 type Updater struct {
@@ -296,6 +298,12 @@ func atomicMove(src, dst string) error {
 	return err
 }
 
+func (u *Updater) setLog(msg string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.status.LastLog = msg
+}
+
 func (u *Updater) UpdateCore(coreName string) error {
 	u.mu.Lock()
 	if u.status.IsUpdating {
@@ -303,11 +311,43 @@ func (u *Updater) UpdateCore(coreName string) error {
 		return fmt.Errorf("an update is already in progress")
 	}
 	u.status.IsUpdating = true
+	u.status.CurrentEngine = coreName
+	u.status.LastError = ""
+	u.status.LastLog = "Starting update for " + coreName
 	u.mu.Unlock()
 
+	return u.doUpdate(coreName)
+}
+
+func (u *Updater) StartAsyncUpdate(coreName string) error {
+	u.mu.Lock()
+	if u.status.IsUpdating {
+		u.mu.Unlock()
+		return fmt.Errorf("an update is already in progress")
+	}
+	u.status.IsUpdating = true
+	u.status.CurrentEngine = coreName
+	u.status.LastError = ""
+	u.status.LastLog = "Update queued for " + coreName
+	u.mu.Unlock()
+
+	go func() {
+		_ = u.doUpdate(coreName)
+	}()
+	return nil
+}
+
+func (u *Updater) doUpdate(coreName string) (err error) {
 	defer func() {
 		u.mu.Lock()
 		u.status.IsUpdating = false
+		if err != nil {
+			u.status.LastError = err.Error()
+			u.status.LastLog = "Update failed: " + err.Error()
+		} else {
+			u.status.LastError = ""
+			u.status.LastLog = "Update completed successfully"
+		}
 		u.mu.Unlock()
 	}()
 
@@ -342,18 +382,21 @@ func (u *Updater) updateXray(arch string) error {
 	tmpZip := filepath.Join(os.TempDir(), "xray-update.zip")
 	defer os.Remove(tmpZip)
 
+	u.setLog("Downloading xray-core...")
 	if err := downloadFile(url, tmpZip); err != nil {
 		return fmt.Errorf("downloading xray failed: %w. Please check internet connection or activate tunnel and try again", err)
 	}
 
 	tmpBin := filepath.Join(os.TempDir(), "xray.new")
 	defer os.Remove(tmpBin)
+	u.setLog("Extracting binary...")
 	if err := unzipExtractFile(tmpZip, "xray", tmpBin); err != nil {
 		return fmt.Errorf("extracting xray binary failed: %w", err)
 	}
 	_ = os.Chmod(tmpBin, 0755)
 
 	// Standalone verification
+	u.setLog("Verifying binary...")
 	testCmd := exec.Command(tmpBin, "-version")
 	if err := testCmd.Run(); err != nil {
 		return fmt.Errorf("verification of new xray binary failed: %w", err)
@@ -367,6 +410,7 @@ func (u *Updater) updateXray(arch string) error {
 	}
 
 	// Atomic rename swap
+	u.setLog("Swapping binary...")
 	if err := atomicMove(tmpBin, targetBin); err != nil {
 		// Rollback if failed
 		if _, bErr := os.Stat(backupBin); bErr == nil {
@@ -397,6 +441,7 @@ func (u *Updater) updateTun2socks(arch string) error {
 	tmpZip := filepath.Join(os.TempDir(), "tun2socks-update.zip")
 	defer os.Remove(tmpZip)
 
+	u.setLog("Downloading tun2socks...")
 	if err := downloadFile(url, tmpZip); err != nil {
 		return fmt.Errorf("downloading tun2socks failed: %w. Please check internet connection or activate tunnel and try again", err)
 	}
@@ -404,6 +449,7 @@ func (u *Updater) updateTun2socks(arch string) error {
 	tmpBin := filepath.Join(os.TempDir(), "tun2socks.new")
 	defer os.Remove(tmpBin)
 	targetExtractName := fmt.Sprintf("tun2socks-linux-%s", arch)
+	u.setLog("Extracting binary...")
 	if err := unzipExtractFile(tmpZip, targetExtractName, tmpBin); err != nil {
 		if err := unzipExtractFile(tmpZip, "tun2socks", tmpBin); err != nil {
 			return fmt.Errorf("extracting tun2socks failed: %w", err)
@@ -418,6 +464,7 @@ func (u *Updater) updateTun2socks(arch string) error {
 	}
 
 	// Atomic swap
+	u.setLog("Swapping binary...")
 	if err := atomicMove(tmpBin, targetBin); err != nil {
 		if _, bErr := os.Stat(backupBin); bErr == nil {
 			_ = atomicMove(backupBin, targetBin)

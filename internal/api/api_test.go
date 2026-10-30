@@ -551,6 +551,81 @@ func TestAPI_SystemUpdateEndpoints(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 Bad Request for invalid core, got %d: %s", rec.Code, rec.Body.String())
 	}
+
+	// POST /api/system/update-core with async: true
+	asyncBody, _ := json.Marshal(map[string]interface{}{
+		"core":  "xray",
+		"async": true,
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/system/update-core", bytes.NewReader(asyncBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for async update-core, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var asyncResp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &asyncResp); err != nil {
+		t.Fatalf("failed to decode async update response: %v", err)
+	}
+	if asyncResp["status"] != "updating" {
+		t.Errorf("expected status 'updating', got %v", asyncResp["status"])
+	}
+	if asyncResp["core"] != "xray" {
+		t.Errorf("expected core 'xray', got %v", asyncResp["core"])
+	}
+
+	// Immediate second call should be rejected with 409 Conflict
+	conflictReq := httptest.NewRequest(http.MethodPost, "/api/system/update-core", bytes.NewReader(asyncBody))
+	conflictReq.Header.Set("Authorization", "Bearer "+token)
+	conflictRec := httptest.NewRecorder()
+	router.ServeHTTP(conflictRec, conflictReq)
+	if conflictRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict while update in progress, got %d: %s", conflictRec.Code, conflictRec.Body.String())
+	}
+
+	// GET /api/system/updates polling
+	req = httptest.NewRequest(http.MethodGet, "/api/system/updates", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for GET /api/system/updates, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var pollResp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &pollResp); err != nil {
+		t.Fatalf("failed to decode GET /api/system/updates response: %v", err)
+	}
+	if _, ok := pollResp["is_updating"]; !ok {
+		t.Errorf("expected is_updating field in status response")
+	}
+
+	// Test query param ?async=true with a fresh router
+	freshRouter, freshDir := setupTestRouter(t)
+	defer os.RemoveAll(freshDir)
+
+	freshLoginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	freshLoginRec := httptest.NewRecorder()
+	freshRouter.ServeHTTP(freshLoginRec, freshLoginReq)
+	var freshAuthResp map[string]string
+	_ = json.Unmarshal(freshLoginRec.Body.Bytes(), &freshAuthResp)
+	freshToken := freshAuthResp["token"]
+
+	paramBody, _ := json.Marshal(map[string]string{"core": "tun2socks"})
+	req = httptest.NewRequest(http.MethodPost, "/api/system/update-core?async=true", bytes.NewReader(paramBody))
+	req.Header.Set("Authorization", "Bearer "+freshToken)
+	rec = httptest.NewRecorder()
+	freshRouter.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for query param ?async=true, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var queryResp map[string]interface{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &queryResp)
+	if queryResp["status"] != "updating" {
+		t.Errorf("expected status 'updating', got %v", queryResp["status"])
+	}
 }
 
 func TestAPI_SettingsEndpoints(t *testing.T) {
