@@ -327,4 +327,105 @@ func TestHandleSettingsMenu_ConfigureWatchdog_Cancel(t *testing.T) {
 	}
 }
 
+func TestHandleSettingsMenu_ConfigureDNSOverTunnel(t *testing.T) {
+	// 1. Enable DNS Over Tunnel with custom remote DNS servers
+	mock := &mockSettingsServiceBridge{
+		settings: &store.SystemSettings{
+			WebPort:                    2080,
+			SafeModeSeconds:            120,
+			HealthCheckIntervalMinutes: 5,
+			HealthCheckURL:             "https://www.google.com/generate_204",
+			DNSOverTunnel:              false,
+			RemoteDNS:                  "1.1.1.1,8.8.8.8",
+		},
+	}
+	input := "4\ny\n9.9.9.9,1.1.1.1\n0\n"
+	reader := bufio.NewReader(strings.NewReader(input))
+
+	err := HandleSettingsMenu(mock, reader)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if mock.savedSettings == nil {
+		t.Fatal("expected SaveSettings to be called on bridge")
+	}
+	if !mock.savedSettings.DNSOverTunnel {
+		t.Fatalf("expected DNSOverTunnel to be true, got false")
+	}
+	if mock.savedSettings.RemoteDNS != "9.9.9.9,1.1.1.1" {
+		t.Fatalf("expected RemoteDNS '9.9.9.9,1.1.1.1', got '%s'", mock.savedSettings.RemoteDNS)
+	}
+
+	// 2. Disable DNS Over Tunnel
+	mockDisable := &mockSettingsServiceBridge{
+		settings: &store.SystemSettings{
+			WebPort:       2080,
+			DNSOverTunnel: true,
+			RemoteDNS:     "1.1.1.1,8.8.8.8",
+		},
+	}
+	inputDisable := "4\nn\n0\n"
+	readerDisable := bufio.NewReader(strings.NewReader(inputDisable))
+
+	err = HandleSettingsMenu(mockDisable, readerDisable)
+	if err != nil {
+		t.Fatalf("expected nil error on disable, got %v", err)
+	}
+	if mockDisable.savedSettings == nil {
+		t.Fatal("expected SaveSettings to be called when disabling DNS Over Tunnel")
+	}
+	if mockDisable.savedSettings.DNSOverTunnel {
+		t.Fatalf("expected DNSOverTunnel to be false, got true")
+	}
+
+	// 3. Cancel at enable/disable prompt without mutating settings
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "\n"} {
+		mockCancel := &mockSettingsServiceBridge{
+			settings: &store.SystemSettings{
+				WebPort:       2080,
+				DNSOverTunnel: true,
+				RemoteDNS:     "1.1.1.1,8.8.8.8",
+			},
+		}
+		inputCancel := "4\n" + cancelInput + "0\n"
+		readerCancel := bufio.NewReader(strings.NewReader(inputCancel))
+
+		err = HandleSettingsMenu(mockCancel, readerCancel)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mockCancel.savedSettings != nil {
+			t.Fatalf("expected SaveSettings not called on cancel input %q at toggle prompt", cancelInput)
+		}
+		if !mockCancel.settings.DNSOverTunnel || mockCancel.settings.RemoteDNS != "1.1.1.1,8.8.8.8" {
+			t.Fatalf("expected settings not mutated on cancel input %q", cancelInput)
+		}
+	}
+
+	// 4. Cancel at remote DNS prompt without mutating settings
+	for _, cancelInput := range []string{"0\n", "b\n", "B\n", "\n"} {
+		mockCancel := &mockSettingsServiceBridge{
+			settings: &store.SystemSettings{
+				WebPort:       2080,
+				DNSOverTunnel: false,
+				RemoteDNS:     "1.1.1.1,8.8.8.8",
+			},
+		}
+		inputCancel := "4\ny\n" + cancelInput + "0\n"
+		readerCancel := bufio.NewReader(strings.NewReader(inputCancel))
+
+		err = HandleSettingsMenu(mockCancel, readerCancel)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if mockCancel.savedSettings != nil {
+			t.Fatalf("expected SaveSettings not called on cancel input %q at DNS prompt", cancelInput)
+		}
+		if mockCancel.settings.DNSOverTunnel || mockCancel.settings.RemoteDNS != "1.1.1.1,8.8.8.8" {
+			t.Fatalf("expected settings not mutated on cancel input %q", cancelInput)
+		}
+	}
+}
+
+
 

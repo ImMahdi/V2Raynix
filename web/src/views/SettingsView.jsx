@@ -31,6 +31,13 @@ export default function SettingsView({
   const [healthStatusMsg, setHealthStatusMsg] = useState('');
   const [healthErrorMsg, setHealthErrorMsg] = useState('');
 
+  // DNS & Censorship Protection state
+  const [dnsOverTunnel, setDnsOverTunnel] = useState(true);
+  const [remoteDNS, setRemoteDNS] = useState('1.1.1.1,8.8.8.8');
+  const [savingDNS, setSavingDNS] = useState(false);
+  const [dnsStatusMsg, setDnsStatusMsg] = useState('');
+  const [dnsErrorMsg, setDnsErrorMsg] = useState('');
+
   // Load system settings on mount
   useEffect(() => {
     let isMounted = true;
@@ -48,6 +55,16 @@ export default function SettingsView({
           setProbeUrl(data.healthCheckURL);
         } else if (data.HealthCheckURL) {
           setProbeUrl(data.HealthCheckURL);
+        }
+        if (data.dnsOverTunnel !== undefined) {
+          setDnsOverTunnel(data.dnsOverTunnel);
+        } else if (data.DNSOverTunnel !== undefined) {
+          setDnsOverTunnel(data.DNSOverTunnel);
+        }
+        if (data.remoteDNS) {
+          setRemoteDNS(data.remoteDNS);
+        } else if (data.RemoteDNS) {
+          setRemoteDNS(data.RemoteDNS);
         }
       })
       .catch((err) => {
@@ -105,6 +122,28 @@ export default function SettingsView({
     }
   };
 
+  const handleSaveDNSSettings = async (e) => {
+    e.preventDefault();
+    setSavingDNS(true);
+    setDnsStatusMsg('');
+    setDnsErrorMsg('');
+
+    try {
+      const payload = {
+        ...(settings || {}),
+        dnsOverTunnel: Boolean(dnsOverTunnel),
+        remoteDNS: (remoteDNS || '').trim() || '1.1.1.1,8.8.8.8',
+      };
+      const updated = await apiClient.saveSettings(payload);
+      setSettings(updated);
+      setDnsStatusMsg('DNS settings saved successfully!');
+    } catch (err) {
+      setDnsErrorMsg(err.message || 'Failed to save DNS settings');
+    } finally {
+      setSavingDNS(false);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', width: '100%' }}>
       <div style={{ marginBottom: '1.75rem' }}>
@@ -112,6 +151,119 @@ export default function SettingsView({
         <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
           Manage administrator security, connection health watchdog, and system preferences.
         </p>
+      </div>
+
+      {/* DNS & Censorship Protection Card */}
+      <div className="glass-card" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '1.25rem' }}>
+          <Shield size={20} color="#38bdf8" />
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>DNS & Censorship Protection</h3>
+        </div>
+
+        <form onSubmit={handleSaveDNSSettings}>
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.65rem',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={dnsOverTunnel}
+                onChange={(e) => setDnsOverTunnel(e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: '#38bdf8', cursor: 'pointer' }}
+              />
+              DNS Over Tunnel (Anti-Poisoning)
+            </label>
+            <small
+              style={{
+                color: 'var(--text-muted)',
+                fontSize: '0.75rem',
+                marginTop: '0.35rem',
+                display: 'block',
+                lineHeight: 1.4,
+              }}
+            >
+              Routing DNS queries through the encrypted tunnel prevents ISP DNS poisoning (restoring Telegram &amp; filtered domains).
+            </small>
+          </div>
+
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                color: 'var(--text-secondary)',
+                marginBottom: '0.4rem',
+              }}
+            >
+              Remote DNS Resolvers
+            </label>
+            <input
+              type="text"
+              placeholder="1.1.1.1,8.8.8.8"
+              className="input-field"
+              value={remoteDNS}
+              onChange={(e) => setRemoteDNS(e.target.value)}
+              disabled={!dnsOverTunnel}
+              required={dnsOverTunnel}
+            />
+            <small
+              style={{
+                color: 'var(--text-muted)',
+                fontSize: '0.75rem',
+                marginTop: '0.35rem',
+                display: 'block',
+                lineHeight: 1.4,
+              }}
+            >
+              Comma-separated upstream DNS server IPs queried through the tunnel.
+            </small>
+          </div>
+
+          {dnsStatusMsg && (
+            <div
+              style={{
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                color: '#34d399',
+                padding: '0.65rem 0.85rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.85rem',
+                marginBottom: '1.25rem',
+              }}
+            >
+              {dnsStatusMsg}
+            </div>
+          )}
+
+          {dnsErrorMsg && (
+            <div
+              style={{
+                background: 'rgba(244, 63, 94, 0.12)',
+                border: '1px solid rgba(244, 63, 94, 0.3)',
+                color: '#fb7185',
+                padding: '0.65rem 0.85rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.85rem',
+                marginBottom: '1.25rem',
+              }}
+            >
+              {dnsErrorMsg}
+            </div>
+          )}
+
+          <button type="submit" className="btn btn-primary" disabled={savingDNS}>
+            {savingDNS ? 'Saving Settings...' : 'Save DNS Settings'}
+          </button>
+        </form>
       </div>
 
       {/* Health Check Watchdog Card */}

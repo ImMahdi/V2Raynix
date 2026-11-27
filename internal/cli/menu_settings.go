@@ -47,11 +47,21 @@ func HandleSettingsMenu(bridge TUIBridge, reader *bufio.Reader) error {
 			targetURL = "https://www.google.com/generate_204"
 		}
 
+		dnsStatus := "Disabled"
+		if settings.DNSOverTunnel {
+			remoteDNS := settings.RemoteDNS
+			if remoteDNS == "" {
+				remoteDNS = "1.1.1.1,8.8.8.8"
+			}
+			dnsStatus = fmt.Sprintf("Enabled (%s)", remoteDNS)
+		}
+
 		settingsLines := []string{
 			fmt.Sprintf(" %-22s : %d", "Web Port", settings.WebPort),
 			fmt.Sprintf(" %-22s : %s", "Listen IP", listenIP),
 			fmt.Sprintf(" %-22s : %s", "Watchdog Status", watchdogStatus),
 			fmt.Sprintf(" %-22s : %s", "Watchdog Target URL", targetURL),
+			fmt.Sprintf(" %-22s : %s", "DNS Over Tunnel", dnsStatus),
 		}
 		fmt.Print(RenderBox("Current System Settings", settingsLines, 74))
 
@@ -59,11 +69,12 @@ func HandleSettingsMenu(bridge TUIBridge, reader *bufio.Reader) error {
 			fmt.Sprintf(" %s[1]%s Change Web Port", AnsiYellow, AnsiReset),
 			fmt.Sprintf(" %s[2]%s Change Admin Username / Password", AnsiYellow, AnsiReset),
 			fmt.Sprintf(" %s[3]%s Configure Watchdog (Enable/Disable, Interval, Target Test URL)", AnsiYellow, AnsiReset),
+			fmt.Sprintf(" %s[4]%s Configure DNS Over Tunnel (Anti-Poisoning)", AnsiYellow, AnsiReset),
 			fmt.Sprintf(" %s[0]%s Back to Main Menu", AnsiRed, AnsiReset),
 		}
 		fmt.Print(RenderBox("Settings Operations", lines, 74))
 
-		choice, err := ReadMenuChoice("\nSelect an option [0-3]: ", []string{"0", "1", "2", "3"}, reader)
+		choice, err := ReadMenuChoice("\nSelect an option [0-4]: ", []string{"0", "1", "2", "3", "4"}, reader)
 		if err != nil {
 			return err
 		}
@@ -77,6 +88,8 @@ func HandleSettingsMenu(bridge TUIBridge, reader *bufio.Reader) error {
 			handleChangeCredentials(bridge, reader)
 		case "3":
 			handleConfigureWatchdog(bridge, reader, settings)
+		case "4":
+			handleConfigureDNSOverTunnel(bridge, reader)
 		}
 	}
 }
@@ -171,4 +184,78 @@ func handleConfigureWatchdog(bridge TUIBridge, reader *bufio.Reader, currentSett
 		return
 	}
 	fmt.Printf("%sWatchdog settings successfully updated.%s\n", AnsiGreen, AnsiReset)
+}
+
+func handleConfigureDNSOverTunnel(bridge TUIBridge, reader *bufio.Reader) {
+	settings, err := bridge.GetSettings()
+	if err != nil || settings == nil {
+		settings = &store.SystemSettings{
+			WebPort:                    2080,
+			SafeModeSeconds:            120,
+			HealthCheckIntervalMinutes: 5,
+			HealthCheckURL:             "https://www.google.com/generate_204",
+			DNSOverTunnel:              true,
+			RemoteDNS:                  "1.1.1.1,8.8.8.8",
+		}
+	}
+
+	currentStatus := "Disabled"
+	if settings.DNSOverTunnel {
+		currentStatus = "Enabled"
+	}
+
+	fmt.Printf("\nEnable DNS Over Tunnel? (y/n) [current: %s, or '0' / 'b' to cancel]: ", currentStatus)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return
+	}
+	trimmed := strings.TrimSpace(input)
+	if IsCancelInput(trimmed) {
+		fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
+		return
+	}
+
+	var enabled bool
+	switch strings.ToLower(trimmed) {
+	case "y", "yes", "true", "1":
+		enabled = true
+	case "n", "no", "false":
+		enabled = false
+	default:
+		fmt.Printf("%sInvalid choice '%s'. Please enter 'y' or 'n'.%s\n", AnsiRed, trimmed, AnsiReset)
+		return
+	}
+
+	remoteDNS := settings.RemoteDNS
+	if enabled {
+		currentDNS := remoteDNS
+		if currentDNS == "" {
+			currentDNS = "1.1.1.1,8.8.8.8"
+		}
+		fmt.Printf("Enter Remote DNS servers (comma-separated) [current: %s, or '0' / 'b' to cancel]: ", currentDNS)
+		dnsInput, err := reader.ReadString('\n')
+		if err != nil {
+			return
+		}
+		trimmedDNS := strings.TrimSpace(dnsInput)
+		if IsCancelInput(trimmedDNS) {
+			fmt.Printf("%sOperation cancelled.%s\n", AnsiYellow, AnsiReset)
+			return
+		}
+		remoteDNS = trimmedDNS
+	}
+
+	settings.DNSOverTunnel = enabled
+	settings.RemoteDNS = remoteDNS
+
+	if err := bridge.SaveSettings(settings); err != nil {
+		fmt.Printf("%sFailed to save DNS settings: %v%s\n", AnsiRed, err, AnsiReset)
+		return
+	}
+
+	if enabled {
+		fmt.Printf("%sDNS Over Tunnel enabled (%s).%s\n", AnsiGreen, remoteDNS, AnsiReset)
+	} else {
+		fmt.Printf("%sDNS Over Tunnel disabled.%s\n", AnsiGreen, AnsiReset)
+	}
 }
