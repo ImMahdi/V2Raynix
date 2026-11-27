@@ -47,7 +47,7 @@
 Install and start V2Raynix on any Linux server (**Ubuntu**, **Debian**, **CentOS**, **Fedora**, or **Arch Linux**) with a single command — **no Go, no Node.js, and zero build steps required**:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh)
+curl -fsSL https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh | sudo bash
 ```
 
 ### 🪄 What the Installer Does Automatically:
@@ -185,6 +185,7 @@ V2Raynix can be managed completely headless via scriptable CLI subcommands, an i
 | `v2raynix health` | Perform live HTTP latency and connectivity probe through the active tunnel |
 | `v2raynix confirm` | Immediately confirm network health to persist tunnel and cancel safe mode countdown |
 | `v2raynix rollback` | Immediately abort connection and rollback system network routing to safe state |
+| `v2raynix uninstall [--purge]` | Uninstall V2Raynix, tear down tunnel/routes, and optionally remove `/etc/v2raynix` (also via `install.sh --uninstall`) |
 
 ### CLI Daemon & Service Flags
 

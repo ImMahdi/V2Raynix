@@ -15,9 +15,54 @@ echo -e "${CYAN}======================================================${NC}"
 echo -e "${CYAN}           V2Raynix Linux Suite Installer            ${NC}"
 echo -e "${CYAN}======================================================${NC}"
 
+UNINSTALL=false
+PURGE=false
+YES=false
+ORIGINAL_ARGS=("$@")
+
+for arg in "$@"; do
+    case "$arg" in
+        --uninstall|-u) UNINSTALL=true ;;
+        --purge) PURGE=true ;;
+        --yes|-y) YES=true ;;
+    esac
+done
+
 if [ "$(id -u)" != "0" ]; then
-   echo -e "${RED}Error: This script must be run as root.${NC}" 1>&2
-   exit 1
+    if [ -f "$0" ] && command -v sudo >/dev/null 2>&1; then
+        exec sudo -E bash "$0" "${ORIGINAL_ARGS[@]}"
+    fi
+    echo -e "${RED}Error: This script must be run as root.${NC}" 1>&2
+    echo -e "${YELLOW}Run with: curl -fsSL https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh | sudo bash${NC}" 1>&2
+    exit 1
+fi
+
+if [ "$UNINSTALL" = true ]; then
+    if [ -x /usr/local/bin/v2raynix ]; then
+        exec /usr/local/bin/v2raynix uninstall "${ORIGINAL_ARGS[@]}"
+    fi
+
+    echo -e "${YELLOW}* V2Raynix binary not found; running fallback uninstaller...${NC}"
+    if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+        systemctl stop v2raynix >/dev/null 2>&1 || true
+        systemctl disable v2raynix >/dev/null 2>&1 || true
+    fi
+    if command -v ip >/dev/null 2>&1; then
+        ip rule del priority 2000 >/dev/null 2>&1 || true
+        ip route flush table 100 >/dev/null 2>&1 || true
+        ip link del tun0 >/dev/null 2>&1 || true
+    fi
+    rm -f /etc/systemd/system/v2raynix.service
+    if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    rm -f /usr/local/bin/v2raynix /usr/bin/v2raynix
+    if [ "$PURGE" = true ]; then
+        rm -rf /etc/v2raynix
+        echo -e "${GREEN}* Removed /etc/v2raynix (--purge).${NC}"
+    fi
+    echo -e "${GREEN}* V2Raynix uninstalled.${NC}"
+    exit 0
 fi
 
 # Detect architecture
@@ -30,17 +75,18 @@ esac
 
 echo -e "${GREEN}* Detected system architecture: $GOARCH${NC}"
 
-# Ensure unzip & curl are installed
-if ! command -v unzip >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
-    echo -e "${YELLOW}* Installing required tools (curl, unzip)...${NC}"
+# Ensure required tools are installed
+if ! command -v unzip >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v iptables >/dev/null 2>&1 || ! command -v ip >/dev/null 2>&1; then
+    echo -e "${YELLOW}* Installing required tools (curl, unzip, iptables, iproute2, ca-certificates)...${NC}"
+    export DEBIAN_FRONTEND=noninteractive
     if command -v apt-get >/dev/null 2>&1; then
-        apt-get update -y && apt-get install -y curl unzip
+        apt-get update -y </dev/null && apt-get install -y curl unzip iptables iproute2 ca-certificates </dev/null
     elif command -v dnf >/dev/null 2>&1; then
-        dnf install -y curl unzip
+        dnf install -y curl unzip iptables iproute ca-certificates </dev/null
     elif command -v yum >/dev/null 2>&1; then
-        yum install -y curl unzip
+        yum install -y curl unzip iptables iproute ca-certificates </dev/null
     elif command -v pacman >/dev/null 2>&1; then
-        pacman -Sy --noconfirm curl unzip
+        pacman -Sy --noconfirm curl unzip iptables iproute2 ca-certificates </dev/null
     fi
 fi
 
@@ -199,6 +245,12 @@ ensure_v2raynix() {
 
 ensure_v2raynix
 
+# Create universal /usr/bin symlinks for non-login/sudo PATH compatibility
+mkdir -p /usr/bin
+ln -sf /usr/local/bin/v2raynix /usr/bin/v2raynix
+ln -sf /usr/local/bin/xray /usr/bin/xray
+ln -sf /usr/local/bin/tun2socks /usr/bin/tun2socks
+
 # Install systemd service
 cat << 'EOF' > /etc/systemd/system/v2raynix.service
 [Unit]
@@ -220,11 +272,15 @@ AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable v2raynix
-systemctl restart v2raynix
+if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload
+    systemctl enable v2raynix
+    systemctl restart v2raynix
+else
+    echo -e "${YELLOW}* Systemd not detected; skipping service enable/restart.${NC}"
+fi
 
-SERVER_IP=$(curl -s4 icanhazip.com || echo "your-server-ip")
+SERVER_IP=$(curl -s4 --connect-timeout 3 -m 5 icanhazip.com || echo "your-server-ip")
 
 echo -e "\n${GREEN}======================================================${NC}"
 echo -e "${GREEN}      V2Raynix successfully installed & started!      ${NC}"

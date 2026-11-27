@@ -36,7 +36,12 @@ func main() {
 		isInteractive := len(os.Args) == 1 || (len(os.Args) > 1 && (os.Args[1] == "menu" || os.Args[1] == "tui" || os.Args[1] == "setup" || os.Args[1] == "uninstall"))
 		if isInteractive {
 			if sudoPath, err := exec.LookPath("sudo"); err == nil {
-				cmd := exec.Command(sudoPath, os.Args...)
+				exePath, exeErr := os.Executable()
+				if exeErr != nil {
+					exePath = os.Args[0]
+				}
+				sudoArgs := append([]string{exePath}, os.Args[1:]...)
+				cmd := exec.Command(sudoPath, sudoArgs...)
 				cmd.Stdin = os.Stdin
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr

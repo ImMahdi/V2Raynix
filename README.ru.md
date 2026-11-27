@@ -47,7 +47,7 @@
 Установите и запустите V2Raynix на любом дистрибутиве Linux (**Ubuntu**, **Debian**, **CentOS**, **Fedora** или **Arch Linux**) с помощью **одной команды** в терминале — **без установки Go, Node.js и необходимости компиляции**:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh)
+curl -fsSL https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh | sudo bash
 ```
 
 ### 🪄 Что скрипт выполняет автоматически:
@@ -185,6 +185,7 @@ sudo v2raynix setup
 | `v2raynix health` | Запуск живой проверки HTTP-задержки и доступности сети через туннель |
 | `v2raynix confirm` | Немедленное подтверждение стабильности сети и отмена таймера отката Safe Mode |
 | `v2raynix rollback` | Немедленный откат сетевых маршрутов при потере связи |
+| `v2raynix uninstall [--purge]` | Удаление V2Raynix, очистка туннеля и маршрутов, опционально удаление `/etc/v2raynix` (также через `install.sh --uninstall`) |
 
 ### Флаги демона и параметров запуска
 

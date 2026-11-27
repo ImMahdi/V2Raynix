@@ -47,7 +47,7 @@
 نصب و راه‌اندازی V2Raynix روی تمامی توزیع‌های لینوکس (**Ubuntu**, **Debian**, **CentOS**, **Fedora**, **Arch Linux**) تنها با اجرای **یک دستور** در ترمینال بدون نیاز به نصب Go، کامپایل یا پیش‌نیازهای پیچیده:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh)
+curl -fsSL https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh | sudo bash
 ```
 
 ### 🪄 مراحل انجام‌شده توسط اسکریپت نصب خودکار:
@@ -185,6 +185,7 @@ sudo v2raynix setup
 | `v2raynix health` | اجرای تست زنده تاخیر زمانی HTTP و بررسی اتصال اینترنت از بستر تونل فعال |
 | `v2raynix confirm` | تایید فوری برقراری پایدار اتصال و لغو شمارش معکوس بازگشت خودکار (Safe Mode) |
 | `v2raynix rollback` | لغو و بازگردانی فوری مسیرهای شبکه در صورت بروز قطعی |
+| `v2raynix uninstall [--purge]` | حذف کامل V2Raynix، پاک‌سازی تونل و مسیرها و در صورت نیاز حذف `/etc/v2raynix` (یا با `install.sh --uninstall`) |
 
 ### پارامترها و سوییچ‌های سرویس
 

@@ -47,7 +47,7 @@
 在任何 Linux 服务器（**Ubuntu**、**Debian**、**CentOS**、**Fedora** 或 **Arch Linux**）上仅需**执行单条命令**即可快速部署并自动启动 V2Raynix —— **无需预装 Go、Node.js，也无需任何手动编译步骤**：
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh)
+curl -fsSL https://raw.githubusercontent.com/ImMahdi/V2Raynix/main/scripts/install.sh | sudo bash
 ```
 
 ### 🪄 安装脚本自动执行的操作：
@@ -185,6 +185,7 @@ sudo v2raynix setup
 | `v2raynix health` | 通过当前活跃隧道执行真实 HTTP 连通性与网络延迟探测 |
 | `v2raynix confirm` | 立即确认网络正常，取消安全模式自动回滚倒计时并保持连接 |
 | `v2raynix rollback` | 立即放弃连接并回滚系统网络路由，防止 SSH 失联 |
+| `v2raynix uninstall [--purge]` | 卸载 V2Raynix、清理隧道与路由，并可选删除 `/etc/v2raynix`（也支持 `install.sh --uninstall`） |
 
 ### 后台守护进程与服务参数
 
