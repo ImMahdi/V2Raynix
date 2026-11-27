@@ -50,11 +50,12 @@ func HandleServiceMenu(bridge TUIBridge, reader *bufio.Reader) error {
 			fmt.Sprintf(" %s[1]%s Check & Upgrade Core Engines (Xray / Sing-box / Mihomo)", AnsiYellow, AnsiReset),
 			fmt.Sprintf(" %s[2]%s Restart V2Raynix Daemon (systemctl restart v2raynix)", AnsiYellow, AnsiReset),
 			fmt.Sprintf(" %s[3]%s View System Service Status (systemctl status v2raynix)", AnsiYellow, AnsiReset),
+			fmt.Sprintf(" %s[4]%s Uninstall V2Raynix from System", AnsiRed, AnsiReset),
 			fmt.Sprintf(" %s[0]%s Back to Main Menu", AnsiRed, AnsiReset),
 		}
 		fmt.Print(RenderBox("Service & Maintenance Operations", lines, 74))
 
-		choice, err := ReadMenuChoice("\nSelect an option [0-3]: ", []string{"0", "1", "2", "3"}, reader)
+		choice, err := ReadMenuChoice("\nSelect an option [0-4]: ", []string{"0", "1", "2", "3", "4"}, reader)
 		if err != nil {
 			return err
 		}
@@ -68,6 +69,8 @@ func HandleServiceMenu(bridge TUIBridge, reader *bufio.Reader) error {
 			handleRestartService()
 		case "3":
 			handleViewServiceStatus(reader)
+		case "4":
+			_ = runUninstallFunc(UninstallOptions{DataDir: "/etc/v2raynix", WebPort: 2080, SSHPort: 22}, reader)
 		}
 	}
 }

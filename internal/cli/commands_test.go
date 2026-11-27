@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"io"
@@ -480,5 +481,29 @@ func TestHandleCLICommand_Unknown(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("expected error on empty args, got nil")
+	}
+}
+
+func TestHandleCLICommand_Uninstall(t *testing.T) {
+	bridge := &mockCLIBridge{}
+	called := false
+	origRun := runUninstallFunc
+	runUninstallFunc = func(opts UninstallOptions, reader *bufio.Reader) error {
+		called = true
+		if !opts.Yes {
+			t.Errorf("expected Yes=true when --yes is passed")
+		}
+		return nil
+	}
+	defer func() { runUninstallFunc = origRun }()
+
+	_, err := captureCLIOutput(t, func() error {
+		return HandleCLICommand([]string{"uninstall", "--yes"}, bridge)
+	})
+	if err != nil {
+		t.Fatalf("expected nil error on uninstall --yes, got %v", err)
+	}
+	if !called {
+		t.Errorf("expected runUninstallFunc to be called")
 	}
 }

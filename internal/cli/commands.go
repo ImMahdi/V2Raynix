@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,6 +41,12 @@ func handleCLICommandWithOutput(args []string, bridge TUIBridge, out io.Writer) 
 		return runConfirmCommand(bridge, out)
 	case "rollback":
 		return runRollbackCommand(bridge, out)
+	case "uninstall":
+		opts, err := ParseUninstallFlags(args[1:])
+		if err != nil {
+			return err
+		}
+		return runUninstallFunc(opts, bufio.NewReader(os.Stdin))
 	default:
 		return fmt.Errorf("unknown command '%s'. Run 'v2raynix help' for usage", args[0])
 	}
@@ -59,6 +66,7 @@ Commands:
   list                                     List all saved configurations
   confirm                                  Confirm safe mode immediately
   rollback                                 Rollback safe mode immediately
+  uninstall [--purge] [--keep-data] [--yes] Uninstall V2Raynix from system
   help, --help, -h                         Show this help message
 
 Options:

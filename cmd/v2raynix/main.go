@@ -33,7 +33,7 @@ func main() {
 	// On Linux, if non-root user runs an interactive terminal session (e.g. 'v2raynix', 'v2raynix menu', 'v2raynix setup'),
 	// elevate via sudo so the process has full permissions to manage system services, kernel routes, and store.
 	if os.Geteuid() != 0 && term.IsTerminal(int(os.Stdin.Fd())) {
-		isInteractive := len(os.Args) == 1 || (len(os.Args) > 1 && (os.Args[1] == "menu" || os.Args[1] == "tui" || os.Args[1] == "setup"))
+		isInteractive := len(os.Args) == 1 || (len(os.Args) > 1 && (os.Args[1] == "menu" || os.Args[1] == "tui" || os.Args[1] == "setup" || os.Args[1] == "uninstall"))
 		if isInteractive {
 			if sudoPath, err := exec.LookPath("sudo"); err == nil {
 				cmd := exec.Command(sudoPath, os.Args...)
@@ -51,7 +51,7 @@ func main() {
 	// Headless CLI Subcommands: connect, disconnect, status, health, check, list, confirm, rollback, help
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
-		case "connect", "disconnect", "status", "health", "check", "list", "confirm", "rollback", "help", "--help", "-h":
+		case "connect", "disconnect", "status", "health", "check", "list", "confirm", "rollback", "uninstall", "help", "--help", "-h":
 			targetDir := "/etc/v2raynix"
 			if os.Geteuid() != 0 {
 				if _, err := os.Stat("/etc/v2raynix"); err != nil {
