@@ -565,5 +565,99 @@ func TestHealthCheckSettingsDefaults(t *testing.T) {
 	}
 }
 
+func TestStore_DNSSettingsDefaultsAndPersistence(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "v2raynix-store-dns-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "test.json")
+	s, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	// 1. Verify defaults on brand new store
+	settings, err := s.GetSettings()
+	if err != nil {
+		t.Fatalf("unexpected error getting settings: %v", err)
+	}
+	if !settings.DNSOverTunnel {
+		t.Errorf("expected default DNSOverTunnel to be true, got false")
+	}
+	if settings.RemoteDNS != "1.1.1.1,8.8.8.8" {
+		t.Errorf("expected default RemoteDNS '1.1.1.1,8.8.8.8', got '%s'", settings.RemoteDNS)
+	}
+
+	// 2. Modify and save
+	settings.DNSOverTunnel = false
+	settings.RemoteDNS = "9.9.9.9"
+	if err := s.SaveSettings(settings); err != nil {
+		t.Fatalf("failed to save settings: %v", err)
+	}
+
+	// 3. Re-open store and verify persistence (including explicit false)
+	s2, err := store.New(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reload store from disk: %v", err)
+	}
+	persisted, err := s2.GetSettings()
+	if err != nil {
+		t.Fatalf("failed to get persisted settings: %v", err)
+	}
+	if persisted.DNSOverTunnel {
+		t.Errorf("expected persisted DNSOverTunnel to be false, got true")
+	}
+	if persisted.RemoteDNS != "9.9.9.9" {
+		t.Errorf("expected persisted RemoteDNS '9.9.9.9', got '%s'", persisted.RemoteDNS)
+	}
+
+	// 4. Save with empty RemoteDNS -> should default to "1.1.1.1,8.8.8.8"
+	persisted.RemoteDNS = ""
+	if err := s2.SaveSettings(persisted); err != nil {
+		t.Fatalf("failed to save settings with empty RemoteDNS: %v", err)
+	}
+	afterEmptySave, err := s2.GetSettings()
+	if err != nil {
+		t.Fatalf("failed to get settings after empty RemoteDNS save: %v", err)
+	}
+	if afterEmptySave.RemoteDNS != "1.1.1.1,8.8.8.8" {
+		t.Errorf("expected empty RemoteDNS to default to '1.1.1.1,8.8.8.8', got '%s'", afterEmptySave.RemoteDNS)
+	}
+
+	// 5. Backward compatibility: existing JSON without dnsOverTunnel or remoteDNS keys
+	legacyPath := filepath.Join(tempDir, "legacy.json")
+	legacyJSON := `{
+  "configs": {},
+  "activeId": "",
+  "routingRules": {},
+  "adminUser": null,
+  "settings": {
+    "webPort": 2080,
+    "safeModeSeconds": 120,
+    "autoStartTunnel": false
+  }
+}`
+	if err := os.WriteFile(legacyPath, []byte(legacyJSON), 0600); err != nil {
+		t.Fatalf("failed to write legacy json: %v", err)
+	}
+	sLegacy, err := store.New(legacyPath)
+	if err != nil {
+		t.Fatalf("failed to load legacy store: %v", err)
+	}
+	legacySettings, err := sLegacy.GetSettings()
+	if err != nil {
+		t.Fatalf("failed to get legacy settings: %v", err)
+	}
+	if legacySettings.RemoteDNS != "1.1.1.1,8.8.8.8" {
+		t.Errorf("expected legacy RemoteDNS to default to '1.1.1.1,8.8.8.8', got '%s'", legacySettings.RemoteDNS)
+	}
+	if legacySettings.DNSOverTunnel {
+		t.Errorf("expected legacy DNSOverTunnel without key to remain false (not overwrite bool zero value), got true")
+	}
+}
+
+
 
 

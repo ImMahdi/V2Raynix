@@ -36,6 +36,8 @@ type SystemSettings struct {
 	AutoStartTunnel            bool   `json:"autoStartTunnel"`
 	HealthCheckIntervalMinutes int    `json:"healthCheckIntervalMinutes"`
 	HealthCheckURL             string `json:"healthCheckURL"`
+	DNSOverTunnel              bool   `json:"dnsOverTunnel"`
+	RemoteDNS                  string `json:"remoteDNS"`
 }
 
 // Settings is an alias for SystemSettings for compatibility and convenience
