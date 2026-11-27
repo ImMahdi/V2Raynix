@@ -53,7 +53,7 @@ func TestBuildRoutingCommands(t *testing.T) {
 	if !strings.Contains(joined, "iptables -t mangle -N V2RAYNIX_INBOUND") {
 		t.Errorf("expected creation of V2RAYNIX_INBOUND chain")
 	}
-	if !strings.Contains(joined, "iptables -t mangle -A PREROUTING -i eth0 -m conntrack --ctstate NEW -j V2RAYNIX_INBOUND") {
+	if !strings.Contains(joined, "iptables -t mangle -A PREROUTING -i eth0 -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j V2RAYNIX_INBOUND") {
 		t.Errorf("expected PREROUTING jump to V2RAYNIX_INBOUND")
 	}
 	if !strings.Contains(joined, "iptables -t mangle -A V2RAYNIX_INBOUND -j CONNMARK --set-mark 0x52") {
@@ -93,7 +93,7 @@ func TestBuildCleanupCommands(t *testing.T) {
 	}
 
 	// Must clean up conntrack rules and chain
-	if !strings.Contains(joined, "iptables -t mangle -D PREROUTING -i eth0 -m conntrack --ctstate NEW -j V2RAYNIX_INBOUND") {
+	if !strings.Contains(joined, "iptables -t mangle -D PREROUTING -i eth0 -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j V2RAYNIX_INBOUND") {
 		t.Errorf("expected deletion of PREROUTING jump rule in cleanup")
 	}
 	if !strings.Contains(joined, "iptables -t mangle -D OUTPUT -m connmark --mark 0x52 -j CONNMARK --restore-mark") {
@@ -175,6 +175,62 @@ func TestBuildRoutingCommands_IncludesIPProto(t *testing.T) {
 			if !strings.Contains(cmd, "ipproto tcp") {
 				t.Fatalf("expected 'ipproto tcp' in cleanup rule: %s", cmd)
 			}
+		}
+	}
+}
+
+func TestBuildRoutingCommands_ConntrackEstablished(t *testing.T) {
+	cmds := network.BuildRoutingCommands("198.51.100.1", "eth0", "192.168.1.1", 22, 2080)
+	joined := strings.Join(cmds, "\n")
+
+	if !strings.Contains(joined, "iptables -t mangle -A PREROUTING -i eth0 -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j V2RAYNIX_INBOUND") {
+		t.Errorf("expected PREROUTING jump to match NEW,ESTABLISHED,RELATED, got:\n%s", joined)
+	}
+
+	// Reverse-proxy port bypass rules (80 and 443) when webPort is 2080
+	expectedProxyRules := []string{
+		"ip rule add ipproto tcp sport 80 table main priority 1004",
+		"ip rule add ipproto tcp dport 80 table main priority 1005",
+		"ip rule add ipproto tcp sport 443 table main priority 1006",
+		"ip rule add ipproto tcp dport 443 table main priority 1007",
+	}
+	for _, rule := range expectedProxyRules {
+		if !strings.Contains(joined, rule) {
+			t.Errorf("expected reverse-proxy rule %q, got:\n%s", rule, joined)
+		}
+	}
+
+	// Avoid duplicate rules when webPort is 80 or 443
+	cmds80 := strings.Join(network.BuildRoutingCommands("198.51.100.1", "eth0", "192.168.1.1", 22, 80), "\n")
+	if strings.Contains(cmds80, "priority 1004") || strings.Contains(cmds80, "priority 1005") {
+		t.Errorf("expected no duplicate port 80 rules when webPort is 80, got:\n%s", cmds80)
+	}
+	if !strings.Contains(cmds80, "priority 1006") || !strings.Contains(cmds80, "priority 1007") {
+		t.Errorf("expected port 443 rules when webPort is 80, got:\n%s", cmds80)
+	}
+
+	cmds443 := strings.Join(network.BuildRoutingCommands("198.51.100.1", "eth0", "192.168.1.1", 22, 443), "\n")
+	if !strings.Contains(cmds443, "priority 1004") || !strings.Contains(cmds443, "priority 1005") {
+		t.Errorf("expected port 80 rules when webPort is 443, got:\n%s", cmds443)
+	}
+	if strings.Contains(cmds443, "priority 1006") || strings.Contains(cmds443, "priority 1007") {
+		t.Errorf("expected no duplicate port 443 rules when webPort is 443, got:\n%s", cmds443)
+	}
+
+	// Cleanup commands
+	cleanupJoined := strings.Join(network.BuildCleanupCommands("198.51.100.1", "eth0", "192.168.1.1", 22, 2080), "\n")
+	if !strings.Contains(cleanupJoined, "iptables -t mangle -D PREROUTING -i eth0 -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j V2RAYNIX_INBOUND") {
+		t.Errorf("expected cleanup of NEW,ESTABLISHED,RELATED PREROUTING rule, got:\n%s", cleanupJoined)
+	}
+	expectedCleanupProxy := []string{
+		"ip rule del ipproto tcp sport 80 table main priority 1004",
+		"ip rule del ipproto tcp dport 80 table main priority 1005",
+		"ip rule del ipproto tcp sport 443 table main priority 1006",
+		"ip rule del ipproto tcp dport 443 table main priority 1007",
+	}
+	for _, rule := range expectedCleanupProxy {
+		if !strings.Contains(cleanupJoined, rule) {
+			t.Errorf("expected cleanup reverse-proxy rule %q, got:\n%s", rule, cleanupJoined)
 		}
 	}
 }

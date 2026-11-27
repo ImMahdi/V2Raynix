@@ -113,8 +113,8 @@ export const api = {
 
   // Tunnel & Safe Mode
   getTunnelStatus: () => request('/tunnel/status'),
-  connectTunnel: (configId) => request('/tunnel/connect', { method: 'POST', body: JSON.stringify({ configId }) }),
-  disconnectTunnel: () => request('/tunnel/disconnect', { method: 'POST' }),
+  connectTunnel: (configId) => request('/tunnel/connect', { method: 'POST', body: JSON.stringify({ configId }), timeout: 30000 }),
+  disconnectTunnel: () => request('/tunnel/disconnect', { method: 'POST', timeout: 30000 }),
   confirmSafeMode: () => request('/tunnel/safe-mode/confirm', { method: 'POST' }),
   rollbackSafeMode: () => request('/tunnel/safe-mode/rollback', { method: 'POST' }),
 

@@ -47,11 +47,27 @@ func BuildRoutingCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 		// 4. Anti-lockout policy rules for Web UI
 		fmt.Sprintf("ip rule add ipproto tcp sport %d table main priority 1002", webPort),
 		fmt.Sprintf("ip rule add ipproto tcp dport %d table main priority 1003", webPort),
+	}
 
+	// 4b. Reverse-proxy port protection (HTTP/HTTPS)
+	if webPort != 80 {
+		cmds = append(cmds,
+			"ip rule add ipproto tcp sport 80 table main priority 1004",
+			"ip rule add ipproto tcp dport 80 table main priority 1005",
+		)
+	}
+	if webPort != 443 {
+		cmds = append(cmds,
+			"ip rule add ipproto tcp sport 443 table main priority 1006",
+			"ip rule add ipproto tcp dport 443 table main priority 1007",
+		)
+	}
+
+	cmds = append(cmds,
 		// 5. Inbound Connection Preservation via Netfilter Connmark
 		fmt.Sprintf("iptables -t mangle -N %s", InboundChain),
 		fmt.Sprintf("iptables -t mangle -F %s", InboundChain),
-		fmt.Sprintf("iptables -t mangle -A PREROUTING -i %s -m conntrack --ctstate NEW -j %s", defaultIface, InboundChain),
+		fmt.Sprintf("iptables -t mangle -A PREROUTING -i %s -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j %s", defaultIface, InboundChain),
 		fmt.Sprintf("iptables -t mangle -A %s -j CONNMARK --set-mark %s", InboundChain, InboundFwmark),
 		fmt.Sprintf("iptables -t mangle -A OUTPUT -m connmark --mark %s -j CONNMARK --restore-mark", InboundFwmark),
 		fmt.Sprintf("ip rule add fwmark %s table main priority %d", InboundFwmark, InboundPriority),
@@ -67,7 +83,7 @@ func BuildRoutingCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 
 		// 8. Divert non-marked traffic to table 100
 		fmt.Sprintf("ip rule add not fwmark %s table %d priority 2000", FwmarkValue, TableID),
-	}
+	)
 
 	return cmds
 }
@@ -92,11 +108,27 @@ func BuildCleanupCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 		fmt.Sprintf("ip rule del ipproto tcp dport %d table main priority 1001", sshPort),
 		fmt.Sprintf("ip rule del ipproto tcp sport %d table main priority 1002", webPort),
 		fmt.Sprintf("ip rule del ipproto tcp dport %d table main priority 1003", webPort),
+	}
+
+	if webPort != 80 {
+		cmds = append(cmds,
+			"ip rule del ipproto tcp sport 80 table main priority 1004",
+			"ip rule del ipproto tcp dport 80 table main priority 1005",
+		)
+	}
+	if webPort != 443 {
+		cmds = append(cmds,
+			"ip rule del ipproto tcp sport 443 table main priority 1006",
+			"ip rule del ipproto tcp dport 443 table main priority 1007",
+		)
+	}
+
+	cmds = append(cmds,
 		fmt.Sprintf("ip rule del to %s table main priority 999", remoteProxyIP),
 		"ip rule del priority 999",
 
 		// Remove conntrack rules and custom chain
-		fmt.Sprintf("iptables -t mangle -D PREROUTING -i %s -m conntrack --ctstate NEW -j %s", defaultIface, InboundChain),
+		fmt.Sprintf("iptables -t mangle -D PREROUTING -i %s -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j %s", defaultIface, InboundChain),
 		fmt.Sprintf("iptables -t mangle -D OUTPUT -m connmark --mark %s -j CONNMARK --restore-mark", InboundFwmark),
 		fmt.Sprintf("iptables -t mangle -F %s", InboundChain),
 		fmt.Sprintf("iptables -t mangle -X %s", InboundChain),
@@ -110,7 +142,7 @@ func BuildCleanupCommands(remoteProxyIP, defaultIface, defaultGw string, sshPort
 
 		// Delete tun interface
 		fmt.Sprintf("ip tuntap del dev %s mode tun", TunDevice),
-	}
+	)
 
 	return cmds
 }
