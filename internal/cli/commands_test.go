@@ -261,7 +261,7 @@ func TestHandleCLICommand_Connect(t *testing.T) {
 		},
 	}
 
-	// 1. Connect by exact ID
+	// 1. Connect by exact ID (auto-confirms safe mode by default)
 	out, err := captureCLIOutput(t, func() error {
 		return HandleCLICommand([]string{"connect", "cfg-us-12345"}, bridge)
 	})
@@ -271,8 +271,30 @@ func TestHandleCLICommand_Connect(t *testing.T) {
 	if bridge.connectedConfigID != "cfg-us-12345" {
 		t.Errorf("expected connectedConfigID cfg-us-12345, got %s", bridge.connectedConfigID)
 	}
+	if !bridge.confirmSafeModeCalled {
+		t.Errorf("expected confirmSafeModeCalled to be true by default for headless connect")
+	}
 	if !strings.Contains(out, "Connected") && !strings.Contains(out, "US Premium") {
 		t.Errorf("expected confirmation message in output, got:\n%s", out)
+	}
+
+	// 1b. Connect with --safe-mode leaves safe mode armed (does not auto-confirm)
+	bridge.connectedConfigID = ""
+	bridge.confirmSafeModeCalled = false
+	outSafe, err := captureCLIOutput(t, func() error {
+		return HandleCLICommand([]string{"connect", "cfg-us-12345", "--safe-mode"}, bridge)
+	})
+	if err != nil {
+		t.Fatalf("expected connect --safe-mode to succeed, got %v", err)
+	}
+	if bridge.connectedConfigID != "cfg-us-12345" {
+		t.Errorf("expected connectedConfigID cfg-us-12345, got %s", bridge.connectedConfigID)
+	}
+	if bridge.confirmSafeModeCalled {
+		t.Errorf("expected confirmSafeModeCalled to be false when --safe-mode is passed")
+	}
+	if !strings.Contains(outSafe, "Safe mode armed") {
+		t.Errorf("expected safe mode armed message in output, got:\n%s", outSafe)
 	}
 
 	// 2. Connect by name substring (case-insensitive)

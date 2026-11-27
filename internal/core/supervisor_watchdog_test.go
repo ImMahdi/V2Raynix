@@ -1,6 +1,9 @@
 package core
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -234,5 +237,144 @@ func TestSupervisor_LogFDCloseAndReap(t *testing.T) {
 	}
 	if cmd.ProcessState == nil {
 		t.Errorf("expected cmd.ProcessState to be non-nil (reaped) after teardown")
+	}
+}
+
+func TestWatchdog_AutoRestartDoesNotArmSafeMode(t *testing.T) {
+	tempDir := t.TempDir()
+	st, err := store.New(filepath.Join(tempDir, "data.json"))
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	cfg := &store.ConfigItem{
+		ID:       "cfg-watchdog-safemode",
+		Name:     "Watchdog SafeMode Test",
+		Protocol: "vless",
+		Server:   "127.0.0.1",
+		Port:     443,
+	}
+	if err := st.SaveConfig(cfg); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+	if err := st.SetActiveConfig(cfg.ID); err != nil {
+		t.Fatalf("failed to set active config: %v", err)
+	}
+
+	sup := NewSupervisor(st, 1, true, tempDir)
+	sup.SetSafeModeTimeout(100 * time.Millisecond)
+	sup.SetActiveConfig(cfg)
+
+	if err := sup.RestartTunnel(); err != nil {
+		t.Fatalf("RestartTunnel failed: %v", err)
+	}
+	defer sup.StopTunnel()
+
+	status := sup.GetStatus()
+	if status.State != "connected" {
+		t.Fatalf("expected state 'connected' after RestartTunnel, got %q", status.State)
+	}
+	if status.SafeMode.IsActive || status.SafeMode.RemainingSeconds != 0 {
+		t.Fatalf("expected safeMode NOT active after RestartTunnel, got active=%v remaining=%d", status.SafeMode.IsActive, status.SafeMode.RemainingSeconds)
+	}
+	if sup.safeMode != nil && sup.safeMode.IsActive() {
+		t.Fatalf("expected internal s.safeMode to be inactive after RestartTunnel")
+	}
+
+	// Wait longer than safeModeTimeout (100ms) and verify tunnel remains connected
+	time.Sleep(180 * time.Millisecond)
+
+	statusAfter := sup.GetStatus()
+	if statusAfter.State != "connected" {
+		t.Fatalf("expected tunnel to remain 'connected' after >150ms without safe mode rollback, got %q", statusAfter.State)
+	}
+}
+
+func TestWatchdog_FallbackProbePreventsRestart(t *testing.T) {
+	tsFail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer tsFail.Close()
+
+	tsOK := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer tsOK.Close()
+
+	tempDir := t.TempDir()
+	st, err := store.New(filepath.Join(tempDir, "data.json"))
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	settings, err := st.GetSettings()
+	if err != nil {
+		t.Fatalf("failed to get settings: %v", err)
+	}
+	settings.HealthCheckIntervalMinutes = 1
+	settings.HealthCheckURL = tsFail.URL
+	if err := st.SaveSettings(settings); err != nil {
+		t.Fatalf("failed to save settings: %v", err)
+	}
+
+	cfg := &store.ConfigItem{
+		ID:       "cfg-fallback",
+		Name:     "Fallback Test",
+		Protocol: "vless",
+		Server:   "127.0.0.1",
+		Port:     443,
+	}
+
+	sup := NewSupervisor(st, 60, true, tempDir)
+	sup.SetWatchdogInterval(20 * time.Millisecond)
+	sup.SetWatchdogRetryBackoffs([]time.Duration{5 * time.Millisecond, 5 * time.Millisecond})
+	sup.SetWatchdogFallbackURLs([]string{tsOK.URL})
+
+	if err := sup.StartTunnel(cfg); err != nil {
+		t.Fatalf("StartTunnel failed: %v", err)
+	}
+	defer sup.StopTunnel()
+
+	time.Sleep(100 * time.Millisecond)
+
+	if sup.GetRestartCount() != 0 {
+		t.Fatalf("expected 0 restarts when fallback probe succeeds, got %d", sup.GetRestartCount())
+	}
+	if state := sup.GetStatus().State; state != "connected" {
+		t.Fatalf("expected state 'connected', got %q", state)
+	}
+}
+
+func TestSupervisor_CachedProxyIP(t *testing.T) {
+	tempDir := t.TempDir()
+	st, err := store.New(filepath.Join(tempDir, "data.json"))
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	sup := NewSupervisor(st, 60, true, tempDir)
+
+	// 1. Successful DNS resolution caches the numeric IP
+	ip1 := sup.resolveProxyIPLocked("proxy.example.com", func(host string) (string, error) {
+		return "203.0.113.42", nil
+	})
+	if ip1 != "203.0.113.42" {
+		t.Fatalf("expected resolved IP 203.0.113.42, got %q", ip1)
+	}
+
+	// 2. Temporary DNS failure for same host returns cached IP
+	ip2 := sup.resolveProxyIPLocked("proxy.example.com", func(host string) (string, error) {
+		return "", fmt.Errorf("temporary DNS failure")
+	})
+	if ip2 != "203.0.113.42" {
+		t.Fatalf("expected cached IP 203.0.113.42 on DNS failure, got %q", ip2)
+	}
+
+	// 3. DNS failure for a different host does NOT return stale cached IP
+	ip3 := sup.resolveProxyIPLocked("other.example.com", func(host string) (string, error) {
+		return "", fmt.Errorf("temporary DNS failure")
+	})
+	if ip3 != "other.example.com" {
+		t.Fatalf("expected fallback host 'other.example.com' for uncached host, got %q", ip3)
 	}
 }

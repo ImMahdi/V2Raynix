@@ -52,17 +52,18 @@ Usage:
   v2raynix <command> [options]
 
 Commands:
-  connect <node> [--force]   Connect to configuration (by exact ID or name substring)
-  disconnect                 Disconnect active tunnel
-  status [--json]            Show current service and tunnel status
-  health, check              Run connectivity and latency test
-  list                       List all saved configurations
-  confirm                    Confirm safe mode immediately
-  rollback                   Rollback safe mode immediately
-  help, --help, -h           Show this help message
+  connect <node> [--safe-mode] [--force]   Connect to configuration (by exact ID or name substring)
+  disconnect                               Disconnect active tunnel
+  status [--json]                          Show current service and tunnel status
+  health, check                            Run connectivity and latency test
+  list                                     List all saved configurations
+  confirm                                  Confirm safe mode immediately
+  rollback                                 Rollback safe mode immediately
+  help, --help, -h                         Show this help message
 
 Options:
-  --force, -f                Bypass or immediately confirm safe mode guard
+  --safe-mode                Keep safe mode countdown armed (default auto-confirms)
+  --force, -f                Explicit alias to immediately confirm safe mode guard
   --json                     Output status as machine-readable JSON
 `
 	_, err := fmt.Fprint(out, helpText)
@@ -155,18 +156,20 @@ func runStatusCommand(args []string, bridge TUIBridge, out io.Writer) error {
 
 func runConnectCommand(args []string, bridge TUIBridge, out io.Writer) error {
 	var target string
-	force := false
+	armSafeMode := false
 
 	for _, arg := range args {
-		if arg == "--force" || arg == "-f" {
-			force = true
+		if arg == "--safe-mode" {
+			armSafeMode = true
+		} else if arg == "--force" || arg == "-f" {
+			armSafeMode = false
 		} else if target == "" && !strings.HasPrefix(arg, "-") {
 			target = arg
 		}
 	}
 
 	if target == "" {
-		return errors.New("usage: v2raynix connect <node-id-or-name> [--force]")
+		return errors.New("usage: v2raynix connect <node-id-or-name> [--safe-mode] [--force]")
 	}
 
 	configs, _, err := bridge.ListConfigs()
@@ -214,11 +217,13 @@ func runConnectCommand(args []string, bridge TUIBridge, out io.Writer) error {
 
 	fmt.Fprintf(out, "Connected to configuration: %s (%s)\n", matched.Name, matched.ID)
 
-	if force {
+	if !armSafeMode {
 		if err := bridge.ConfirmSafeMode(); err != nil {
 			return fmt.Errorf("connected, but failed to confirm safe mode: %w", err)
 		}
 		fmt.Fprintln(out, "Safe mode confirmed.")
+	} else {
+		fmt.Fprintln(out, "Safe mode armed. Run 'v2raynix confirm' to persist or wait for auto-rollback.")
 	}
 
 	return nil

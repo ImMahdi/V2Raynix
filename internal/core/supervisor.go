@@ -52,11 +52,13 @@ type Supervisor struct {
 	safeModeTimeout time.Duration
 	safeMode        *network.SafeModeController
 
-	activeRemoteIP string
-	activeIface    string
-	activeGw       string
-	activeSSHPort  int
-	activeWebPort  int
+	activeRemoteIP  string
+	cachedProxyHost string
+	cachedProxyIP   string
+	activeIface     string
+	activeGw        string
+	activeSSHPort   int
+	activeWebPort   int
 
 	xrayCmd      *exec.Cmd
 	tun2socksCmd *exec.Cmd
@@ -66,10 +68,14 @@ type Supervisor struct {
 	logs   []LogEntry
 	logsMu sync.RWMutex
 
-	watchdogCancel     context.CancelFunc
-	watchdogInterval   time.Duration
-	watchdogRetryDelay time.Duration
-	restartCount       int
+	watchdogCancel          context.CancelFunc
+	watchdogInterval        time.Duration
+	watchdogRetryDelay      time.Duration
+	watchdogProbeTimeout    time.Duration
+	watchdogRetryBackoffs   []time.Duration
+	watchdogFallbackURLs    []string
+	watchdogReconnectDelays []time.Duration
+	restartCount            int
 
 	applyDNSFunc  func(string) error
 	revertDNSFunc func() error
@@ -120,6 +126,10 @@ func (s *Supervisor) SetActiveConfig(cfg *store.ConfigItem) {
 }
 
 func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
+	return s.startTunnelInternal(cfg, true)
+}
+
+func (s *Supervisor) startTunnelInternal(cfg *store.ConfigItem, armSafeMode bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -135,7 +145,11 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	if s.mockMode {
 		s.state = "connected"
 		s.applyDNSLocked()
-		s.startSafeModeTimerLocked()
+		if armSafeMode {
+			s.startSafeModeTimerLocked()
+		} else {
+			s.safeMode = nil
+		}
 		s.startHealthWatchdogLocked()
 		s.addLog("info", "Tunnel connected successfully (mock)")
 		return nil
@@ -188,10 +202,7 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 		s.addLog("warn", fmt.Sprintf("Could not auto-detect default route (%v), using fallback dev", err))
 	}
 	sshPort := network.DetectSSHPort()
-	remoteIP, _ := network.ResolveHost(cfg.Server)
-	if remoteIP == "" {
-		remoteIP = cfg.Server
-	}
+	remoteIP := s.resolveProxyIPLocked(cfg.Server, network.ResolveHost)
 
 	s.activeRemoteIP = remoteIP
 	s.activeIface = iface
@@ -295,7 +306,11 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 
 	s.state = "connected"
 	s.applyDNSLocked()
-	s.startSafeModeTimerLocked()
+	if armSafeMode {
+		s.startSafeModeTimerLocked()
+	} else {
+		s.safeMode = nil
+	}
 	s.startHealthWatchdogLocked()
 	s.addLog("info", "Tunnel connected successfully and routing applied")
 	return nil
@@ -331,6 +346,19 @@ func (s *Supervisor) watchProcess(cmd *exec.Cmd, name string) {
 			_ = s.stopTunnelLocked()
 		}
 	}()
+}
+
+func (s *Supervisor) resolveProxyIPLocked(host string, resolveFn func(string) (string, error)) string {
+	if ip, err := resolveFn(host); err == nil && ip != "" {
+		s.cachedProxyHost = host
+		s.cachedProxyIP = ip
+		return ip
+	}
+	if s.cachedProxyHost == host && s.cachedProxyIP != "" {
+		s.addLog("warn", fmt.Sprintf("DNS resolution for %s failed; using cached proxy IP %s", host, s.cachedProxyIP))
+		return s.cachedProxyIP
+	}
+	return host
 }
 
 func (s *Supervisor) startSafeModeTimerLocked() {

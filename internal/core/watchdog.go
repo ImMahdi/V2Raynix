@@ -7,8 +7,16 @@ import (
 	"time"
 )
 
-// CheckHealth executes an HTTP probe to targetURL with a 5-second timeout,
-// verifying that the returned status code is 204 or 200.
+const (
+	defaultWatchdogProbeURL         = "http://cp.cloudflare.com/generate_204"
+	defaultWatchdogFallbackProbeURL = "http://www.google.com/generate_204"
+	defaultWatchdogProbeTimeout     = 10 * time.Second
+	watchdogProbeAttempts           = 3
+	watchdogMaxReconnectAttempts    = 5
+)
+
+// CheckHealth executes an HTTP probe to targetURL with a 10-second timeout
+// (or the configured watchdogProbeTimeout), verifying that the returned status code is 204 or 200.
 func (s *Supervisor) CheckHealth(ctx context.Context, targetURL string) (bool, time.Duration, error) {
 	if targetURL == "" {
 		if s.store != nil {
@@ -17,11 +25,18 @@ func (s *Supervisor) CheckHealth(ctx context.Context, targetURL string) (bool, t
 			}
 		}
 		if targetURL == "" {
-			targetURL = "http://cp.cloudflare.com/generate_204"
+			targetURL = defaultWatchdogProbeURL
 		}
 	}
 
-	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	probeTimeout := defaultWatchdogProbeTimeout
+	s.mu.Lock()
+	if s.watchdogProbeTimeout > 0 {
+		probeTimeout = s.watchdogProbeTimeout
+	}
+	s.mu.Unlock()
+
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, targetURL, nil)
@@ -35,7 +50,7 @@ func (s *Supervisor) CheckHealth(ctx context.Context, targetURL string) (bool, t
 			DisableKeepAlives: true,
 			Proxy:             nil,
 		},
-		Timeout: 5 * time.Second,
+		Timeout: probeTimeout,
 	}
 
 	start := time.Now()
@@ -57,11 +72,80 @@ func (s *Supervisor) CheckHealth(ctx context.Context, targetURL string) (bool, t
 	return true, latency, nil
 }
 
+func (s *Supervisor) probeWithFallback(ctx context.Context, primaryURL string, fallbackURLs []string) (string, time.Duration, error) {
+	healthy, latency, err := s.CheckHealth(ctx, primaryURL)
+	if healthy {
+		return primaryURL, latency, nil
+	}
+
+	for _, fbURL := range fallbackURLs {
+		if fbURL == "" || fbURL == primaryURL {
+			continue
+		}
+		fbHealthy, fbLatency, fbErr := s.CheckHealth(ctx, fbURL)
+		if fbHealthy {
+			return fbURL, fbLatency, nil
+		}
+		_ = fbErr
+	}
+
+	return primaryURL, 0, err
+}
+
+func (s *Supervisor) resolveWatchdogFallbackURLs(primaryURL string) []string {
+	s.mu.Lock()
+	configured := s.watchdogFallbackURLs
+	s.mu.Unlock()
+
+	if configured != nil {
+		out := make([]string, len(configured))
+		copy(out, configured)
+		return out
+	}
+
+	switch primaryURL {
+	case defaultWatchdogProbeURL:
+		return []string{defaultWatchdogFallbackProbeURL}
+	case defaultWatchdogFallbackProbeURL, "https://www.google.com/generate_204":
+		return []string{defaultWatchdogProbeURL}
+	default:
+		return nil
+	}
+}
+
+func (s *Supervisor) getWatchdogRetryBackoffs() []time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.watchdogRetryBackoffs) > 0 {
+		out := make([]time.Duration, len(s.watchdogRetryBackoffs))
+		copy(out, s.watchdogRetryBackoffs)
+		return out
+	}
+	if s.watchdogRetryDelay > 0 {
+		return []time.Duration{s.watchdogRetryDelay, 2 * s.watchdogRetryDelay}
+	}
+	return []time.Duration{5 * time.Second, 10 * time.Second}
+}
+
+func (s *Supervisor) getWatchdogReconnectDelays() []time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.watchdogReconnectDelays) > 0 {
+		out := make([]time.Duration, len(s.watchdogReconnectDelays))
+		copy(out, s.watchdogReconnectDelays)
+		return out
+	}
+	return []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second, 30 * time.Second}
+}
+
 // StartHealthWatchdog runs the periodic health verification daemon loop.
-// If two consecutive probes fail, it triggers automated tunnel restart.
+// If 3 consecutive probes fail (with exponential backoff), it triggers automated tunnel restart
+// with up to 5 reconnection attempts.
 func (s *Supervisor) StartHealthWatchdog(ctx context.Context) {
 	interval := 60 * time.Minute
-	targetURL := "http://cp.cloudflare.com/generate_204"
+	targetURL := defaultWatchdogProbeURL
 
 	if s.store != nil {
 		if settings, err := s.store.GetSettings(); err == nil && settings != nil {
@@ -77,10 +161,6 @@ func (s *Supervisor) StartHealthWatchdog(ctx context.Context) {
 	s.mu.Lock()
 	if s.watchdogInterval > 0 {
 		interval = s.watchdogInterval
-	}
-	retryDelay := s.watchdogRetryDelay
-	if retryDelay <= 0 {
-		retryDelay = 3 * time.Second
 	}
 	s.mu.Unlock()
 
@@ -106,32 +186,77 @@ func (s *Supervisor) StartHealthWatchdog(ctx context.Context) {
 				continue
 			}
 
-			// Probe 1
-			healthy, latency, err := s.CheckHealth(ctx, activeTarget)
-			if healthy {
-				s.addLogComponent("info", "WATCHDOG", fmt.Sprintf("Connection health probe succeeded (target: %s, latency: %v)", activeTarget, latency))
+			fallbacks := s.resolveWatchdogFallbackURLs(activeTarget)
+			retryBackoffs := s.getWatchdogRetryBackoffs()
+
+			var lastErr error
+			probeSucceeded := false
+
+			for attempt := 0; attempt < watchdogProbeAttempts; attempt++ {
+				if attempt > 0 {
+					delayIdx := attempt - 1
+					if delayIdx >= len(retryBackoffs) {
+						delayIdx = len(retryBackoffs) - 1
+					}
+					delay := retryBackoffs[delayIdx]
+					s.addLogComponent("warn", "WATCHDOG", fmt.Sprintf("Connection health probe attempt %d/%d failed (%v). Retrying in %v...", attempt, watchdogProbeAttempts, lastErr, delay))
+
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(delay):
+					}
+				}
+
+				usedURL, latency, err := s.probeWithFallback(ctx, activeTarget, fallbacks)
+				if err == nil {
+					if attempt == 0 {
+						s.addLogComponent("info", "WATCHDOG", fmt.Sprintf("Connection health probe succeeded (target: %s, latency: %v)", usedURL, latency))
+					} else {
+						s.addLogComponent("info", "WATCHDOG", fmt.Sprintf("Connection health probe succeeded on attempt %d/%d (target: %s, latency: %v)", attempt+1, watchdogProbeAttempts, usedURL, latency))
+					}
+					probeSucceeded = true
+					break
+				}
+				lastErr = err
+			}
+
+			if probeSucceeded {
 				continue
 			}
 
-			// Probe 1 failed
-			s.addLogComponent("warn", "WATCHDOG", fmt.Sprintf("Connection health probe failed (%v). Retrying in %v...", err, retryDelay))
+			// All probe attempts failed -> trigger automated recovery with exponential backoff
+			s.addLogComponent("error", "WATCHDOG", fmt.Sprintf("Connection health verification failed after %d attempts (last err: %v). Triggering auto-recovery restart...", watchdogProbeAttempts, lastErr))
 
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(retryDelay):
+			reconnectDelays := s.getWatchdogReconnectDelays()
+			reconnected := false
+			for attempt := 1; attempt <= watchdogMaxReconnectAttempts; attempt++ {
+				if err := s.RestartTunnel(); err == nil {
+					reconnected = true
+					break
+				} else if attempt < watchdogMaxReconnectAttempts {
+					delayIdx := attempt - 1
+					if delayIdx >= len(reconnectDelays) {
+						delayIdx = len(reconnectDelays) - 1
+					}
+					delay := reconnectDelays[delayIdx]
+					s.addLogComponent("warn", "WATCHDOG", fmt.Sprintf("Auto-recovery attempt %d/%d failed (%v). Retrying in %v...", attempt, watchdogMaxReconnectAttempts, err, delay))
+
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(delay):
+					}
+				} else {
+					s.addLogComponent("error", "WATCHDOG", fmt.Sprintf("Auto-recovery failed after %d attempts (%v). Transitioning to disconnected.", watchdogMaxReconnectAttempts, err))
+				}
 			}
 
-			// Probe 2 (Retry)
-			healthy2, latency2, err2 := s.CheckHealth(ctx, activeTarget)
-			if healthy2 {
-				s.addLogComponent("info", "WATCHDOG", fmt.Sprintf("Connection health probe succeeded on retry (target: %s, latency: %v)", activeTarget, latency2))
-				continue
+			if !reconnected {
+				s.mu.Lock()
+				s.state = "disconnected"
+				s.mu.Unlock()
 			}
-
-			// Both probes failed -> trigger automated recovery
-			s.addLogComponent("error", "WATCHDOG", fmt.Sprintf("Connection health verification failed twice (retry err: %v). Triggering auto-recovery restart...", err2))
-			_ = s.RestartTunnel()
 			return
 		}
 	}
@@ -179,7 +304,7 @@ func (s *Supervisor) RestartTunnel() error {
 	s.restartCount++
 	s.mu.Unlock()
 
-	if err := s.StartTunnel(cfg); err != nil {
+	if err := s.startTunnelInternal(cfg, false); err != nil {
 		s.addLogComponent("error", "WATCHDOG", fmt.Sprintf("Auto-recovery restart failed: %v", err))
 		return err
 	}
@@ -207,4 +332,32 @@ func (s *Supervisor) SetWatchdogRetryDelay(d time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.watchdogRetryDelay = d
+}
+
+// SetWatchdogProbeTimeout sets a custom HTTP probe timeout (used in testing).
+func (s *Supervisor) SetWatchdogProbeTimeout(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.watchdogProbeTimeout = d
+}
+
+// SetWatchdogRetryBackoffs sets custom retry backoff delays between failed probes.
+func (s *Supervisor) SetWatchdogRetryBackoffs(delays []time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.watchdogRetryBackoffs = delays
+}
+
+// SetWatchdogFallbackURLs sets custom fallback probe URLs.
+func (s *Supervisor) SetWatchdogFallbackURLs(urls []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.watchdogFallbackURLs = urls
+}
+
+// SetWatchdogReconnectDelays sets custom exponential backoff delays between failed RestartTunnel attempts.
+func (s *Supervisor) SetWatchdogReconnectDelays(delays []time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.watchdogReconnectDelays = delays
 }
