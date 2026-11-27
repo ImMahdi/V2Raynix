@@ -378,3 +378,74 @@ func TestSupervisor_CachedProxyIP(t *testing.T) {
 		t.Fatalf("expected fallback host 'other.example.com' for uncached host, got %q", ip3)
 	}
 }
+
+func TestWatchdog_ReconnectBackoffPreservesContext(t *testing.T) {
+	tsFail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer tsFail.Close()
+
+	tempDir := t.TempDir()
+	st, err := store.New(filepath.Join(tempDir, "data.json"))
+	if err != nil {
+		t.Fatalf("failed to init store: %v", err)
+	}
+
+	settings, err := st.GetSettings()
+	if err != nil {
+		t.Fatalf("failed to get settings: %v", err)
+	}
+	settings.HealthCheckIntervalMinutes = 1
+	settings.HealthCheckURL = tsFail.URL
+	if err := st.SaveSettings(settings); err != nil {
+		t.Fatalf("failed to save settings: %v", err)
+	}
+
+	cfg := &store.ConfigItem{
+		ID:       "cfg-reconnect-backoff",
+		Name:     "Reconnect Backoff Test",
+		Protocol: "vless",
+		Server:   "127.0.0.1",
+		Port:     443,
+	}
+
+	sup := NewSupervisor(st, 60, true, tempDir)
+	sup.SetWatchdogInterval(15 * time.Millisecond)
+	sup.SetWatchdogRetryBackoffs([]time.Duration{5 * time.Millisecond, 5 * time.Millisecond})
+	sup.SetWatchdogReconnectDelays([]time.Duration{15 * time.Millisecond, 15 * time.Millisecond, 15 * time.Millisecond, 15 * time.Millisecond})
+
+	// Simulate initial StartTunnel succeeding, then RestartTunnel failing on attempts 1 & 2,
+	// and succeeding on attempt 3.
+	startCalls := 0
+	sup.startTunnelHook = func(c *store.ConfigItem, armSafeMode bool) error {
+		startCalls++
+		switch startCalls {
+		case 1:
+			return nil // initial StartTunnel
+		case 2, 3:
+			return fmt.Errorf("simulated transient network failure %d", startCalls-1)
+		default:
+			return nil // attempt 3 succeeds
+		}
+	}
+
+	if err := sup.StartTunnel(cfg); err != nil {
+		t.Fatalf("initial StartTunnel failed: %v", err)
+	}
+	defer sup.StopTunnel()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if sup.GetRestartCount() >= 3 && sup.GetStatus().State == "connected" {
+			break
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+
+	if sup.GetRestartCount() < 3 {
+		t.Fatalf("expected watchdog reconnect backoff loop to retry at least 3 times (preserving ctx across failed attempts), got restartCount=%d", sup.GetRestartCount())
+	}
+	if state := sup.GetStatus().State; state != "connected" {
+		t.Fatalf("expected state 'connected' after reconnect attempt 3 succeeded, got %q", state)
+	}
+}

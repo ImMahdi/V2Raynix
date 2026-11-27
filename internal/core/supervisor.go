@@ -76,6 +76,7 @@ type Supervisor struct {
 	watchdogFallbackURLs    []string
 	watchdogReconnectDelays []time.Duration
 	restartCount            int
+	startTunnelHook         func(*store.ConfigItem, bool) error
 
 	applyDNSFunc  func(string) error
 	revertDNSFunc func() error
@@ -135,6 +136,13 @@ func (s *Supervisor) startTunnelInternal(cfg *store.ConfigItem, armSafeMode bool
 
 	if cfg == nil {
 		return fmt.Errorf("config cannot be nil")
+	}
+
+	if s.startTunnelHook != nil {
+		if err := s.startTunnelHook(cfg, armSafeMode); err != nil {
+			s.state = "disconnected"
+			return err
+		}
 	}
 
 	s.addLog("info", fmt.Sprintf("Starting tunnel with config: %s (%s)", cfg.Name, cfg.Protocol))
@@ -298,7 +306,7 @@ func (s *Supervisor) startTunnelInternal(cfg *store.ConfigItem, armSafeMode bool
 	}
 	if err := tunCmd.Start(); err != nil {
 		s.addLog("error", fmt.Sprintf("failed to start tun2socks: %v", err))
-		_ = s.stopTunnelLocked()
+		_ = s.stopTunnelLocked(armSafeMode)
 		return fmt.Errorf("failed to start tun2socks: %w", err)
 	}
 	s.tun2socksCmd = tunCmd
@@ -343,7 +351,7 @@ func (s *Supervisor) watchProcess(cmd *exec.Cmd, name string) {
 		// Emergency teardown is required to avoid an unreachable blackhole routing state.
 		if s.state == "connected" {
 			s.addLog("error", fmt.Sprintf("Child process %s exited unexpectedly (%v). Initiating emergency teardown to prevent network blackhole...", name, err))
-			_ = s.stopTunnelLocked()
+			_ = s.stopTunnelLocked(true)
 		}
 	}()
 }
@@ -372,10 +380,10 @@ func (s *Supervisor) startSafeModeTimerLocked() {
 func (s *Supervisor) StopTunnel() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.stopTunnelLocked()
+	return s.stopTunnelLocked(true)
 }
 
-func (s *Supervisor) stopTunnelLocked() error {
+func (s *Supervisor) stopTunnelLocked(cancelWatchdog bool) error {
 	s.addLog("info", "Stopping tunnel...")
 	s.state = "rolling_back"
 
@@ -383,7 +391,7 @@ func (s *Supervisor) stopTunnelLocked() error {
 		s.safeMode.Confirm()
 	}
 
-	if s.watchdogCancel != nil {
+	if cancelWatchdog && s.watchdogCancel != nil {
 		s.watchdogCancel()
 		s.watchdogCancel = nil
 	}
@@ -491,7 +499,7 @@ func (s *Supervisor) RollbackSafeMode() bool {
 
 	if s.safeMode != nil && s.safeMode.IsActive() {
 		s.safeMode.Confirm() // Disarm pending timer to avoid concurrent/duplicate rollback
-		_ = s.stopTunnelLocked()
+		_ = s.stopTunnelLocked(true)
 		s.addLog("warn", "Safe mode rollback initiated by administrator")
 		return true
 	}

@@ -255,6 +255,10 @@ func (s *Supervisor) StartHealthWatchdog(ctx context.Context) {
 			if !reconnected {
 				s.mu.Lock()
 				s.state = "disconnected"
+				if s.watchdogCancel != nil {
+					s.watchdogCancel()
+					s.watchdogCancel = nil
+				}
 				s.mu.Unlock()
 			}
 			return
@@ -296,13 +300,15 @@ func (s *Supervisor) RestartTunnel() error {
 	}
 
 	s.addLogComponent("warn", "WATCHDOG", fmt.Sprintf("Restarting tunnel with config: %s (%s)", cfg.Name, cfg.Protocol))
-	if err := s.StopTunnel(); err != nil {
-		return fmt.Errorf("failed to stop tunnel during restart: %w", err)
-	}
-
 	s.mu.Lock()
-	s.restartCount++
+	stopErr := s.stopTunnelLocked(false)
+	if stopErr == nil {
+		s.restartCount++
+	}
 	s.mu.Unlock()
+	if stopErr != nil {
+		return fmt.Errorf("failed to stop tunnel during restart: %w", stopErr)
+	}
 
 	if err := s.startTunnelInternal(cfg, false); err != nil {
 		s.addLogComponent("error", "WATCHDOG", fmt.Sprintf("Auto-recovery restart failed: %v", err))
