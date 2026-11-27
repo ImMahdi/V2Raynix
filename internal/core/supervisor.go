@@ -70,6 +70,11 @@ type Supervisor struct {
 	watchdogInterval   time.Duration
 	watchdogRetryDelay time.Duration
 	restartCount       int
+
+	applyDNSFunc  func(string) error
+	revertDNSFunc func() error
+	dnsHooksSet   bool
+	dnsApplied    bool
 }
 
 func NewSupervisor(st store.Store, safeModeSec int, mockMode bool, dataDirs ...string) *Supervisor {
@@ -87,8 +92,19 @@ func NewSupervisor(st store.Store, safeModeSec int, mockMode bool, dataDirs ...s
 		state:           "disconnected",
 		safeModeTimeout: time.Duration(safeModeSec) * time.Second,
 		logs:            make([]LogEntry, 0, 500),
+		applyDNSFunc:    network.ApplyDNSOverTunnel,
+		revertDNSFunc:   network.RevertDNSOverTunnel,
 	}
 	return sup
+}
+
+// SetDNSHooks overrides the DNS apply and revert handlers for testing.
+func (s *Supervisor) SetDNSHooks(applyFn func(string) error, revertFn func() error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.applyDNSFunc = applyFn
+	s.revertDNSFunc = revertFn
+	s.dnsHooksSet = true
 }
 
 func (s *Supervisor) SetSafeModeTimeout(d time.Duration) {
@@ -118,6 +134,7 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 
 	if s.mockMode {
 		s.state = "connected"
+		s.applyDNSLocked()
 		s.startSafeModeTimerLocked()
 		s.startHealthWatchdogLocked()
 		s.addLog("info", "Tunnel connected successfully (mock)")
@@ -277,6 +294,7 @@ func (s *Supervisor) StartTunnel(cfg *store.ConfigItem) error {
 	s.watchProcess(tunCmd, "tun2socks")
 
 	s.state = "connected"
+	s.applyDNSLocked()
 	s.startSafeModeTimerLocked()
 	s.startHealthWatchdogLocked()
 	s.addLog("info", "Tunnel connected successfully and routing applied")
@@ -370,9 +388,59 @@ func (s *Supervisor) stopTunnelLocked() error {
 		_ = network.ExecuteCommands(cleanupCmds)
 	}
 
+	s.revertDNSLocked()
+
 	s.state = "disconnected"
 	s.addLog("info", "Tunnel disconnected cleanly")
 	return nil
+}
+
+func (s *Supervisor) applyDNSLocked() {
+	if s.mockMode && !s.dnsHooksSet {
+		return
+	}
+	if s.applyDNSFunc == nil {
+		return
+	}
+
+	dnsEnabled := true
+	remoteDNS := "1.1.1.1,8.8.8.8"
+	if s.store != nil {
+		if settings, err := s.store.GetSettings(); err == nil && settings != nil {
+			dnsEnabled = settings.DNSOverTunnel
+			if settings.RemoteDNS != "" {
+				remoteDNS = settings.RemoteDNS
+			}
+		}
+	}
+
+	if !dnsEnabled {
+		return
+	}
+
+	s.dnsApplied = true
+	if err := s.applyDNSFunc(remoteDNS); err != nil {
+		s.addLog("warn", fmt.Sprintf("Failed to apply DNS-over-Tunnel (%s): %v", remoteDNS, err))
+		return
+	}
+	s.addLog("info", fmt.Sprintf("Applied DNS-over-Tunnel using resolvers: %s", remoteDNS))
+}
+
+func (s *Supervisor) revertDNSLocked() {
+	if s.mockMode && !s.dnsHooksSet {
+		s.dnsApplied = false
+		return
+	}
+	if !s.dnsApplied || s.revertDNSFunc == nil {
+		return
+	}
+
+	s.dnsApplied = false
+	if err := s.revertDNSFunc(); err != nil {
+		s.addLog("warn", fmt.Sprintf("Failed to revert DNS-over-Tunnel: %v", err))
+		return
+	}
+	s.addLog("info", "Reverted DNS-over-Tunnel configuration")
 }
 
 func (s *Supervisor) ConfirmSafeMode() bool {

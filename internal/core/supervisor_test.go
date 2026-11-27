@@ -203,3 +203,128 @@ func TestSupervisor_RollbackSafeMode_ManualDeadlockCheck(t *testing.T) {
 	}
 }
 
+func TestSupervisor_DNSLifecycle(t *testing.T) {
+	t.Run("applies and reverts DNS when DNSOverTunnel is enabled", func(t *testing.T) {
+		tempDir, err := os.MkdirTemp("", "v2raynix-supervisor-dns-test-*")
+		if err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		s, err := store.New(filepath.Join(tempDir, "data.json"))
+		if err != nil {
+			t.Fatalf("failed to init store: %v", err)
+		}
+
+		settings, err := s.GetSettings()
+		if err != nil {
+			t.Fatalf("failed to get settings: %v", err)
+		}
+		settings.DNSOverTunnel = true
+		settings.RemoteDNS = "1.1.1.1,8.8.8.8"
+		if err := s.SaveSettings(settings); err != nil {
+			t.Fatalf("failed to save settings: %v", err)
+		}
+
+		sup := core.NewSupervisor(s, 10, true)
+
+		var appliedDNS []string
+		revertCalls := 0
+		sup.SetDNSHooks(
+			func(remoteDNS string) error {
+				appliedDNS = append(appliedDNS, remoteDNS)
+				return nil
+			},
+			func() error {
+				revertCalls++
+				return nil
+			},
+		)
+
+		cfg := &store.ConfigItem{
+			ID:       "cfg-dns-1",
+			Name:     "DNS Test Server",
+			Protocol: "vless",
+			Server:   "1.1.1.1",
+			Port:     443,
+			RawURL:   "vless://uuid@1.1.1.1:443?security=none",
+		}
+
+		if err := sup.StartTunnel(cfg); err != nil {
+			t.Fatalf("failed to start tunnel: %v", err)
+		}
+
+		if len(appliedDNS) != 1 || appliedDNS[0] != "1.1.1.1,8.8.8.8" {
+			t.Fatalf("expected applyDNS to be called once with '1.1.1.1,8.8.8.8', got %v", appliedDNS)
+		}
+
+		if err := sup.StopTunnel(); err != nil {
+			t.Fatalf("failed to stop tunnel: %v", err)
+		}
+
+		if revertCalls != 1 {
+			t.Fatalf("expected revertDNS to be called once, got %d", revertCalls)
+		}
+	})
+
+	t.Run("does not apply DNS when DNSOverTunnel is disabled", func(t *testing.T) {
+		tempDir, err := os.MkdirTemp("", "v2raynix-supervisor-dns-disabled-*")
+		if err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		s, err := store.New(filepath.Join(tempDir, "data.json"))
+		if err != nil {
+			t.Fatalf("failed to init store: %v", err)
+		}
+
+		settings, err := s.GetSettings()
+		if err != nil {
+			t.Fatalf("failed to get settings: %v", err)
+		}
+		settings.DNSOverTunnel = false
+		settings.RemoteDNS = "1.1.1.1,8.8.8.8"
+		if err := s.SaveSettings(settings); err != nil {
+			t.Fatalf("failed to save settings: %v", err)
+		}
+
+		sup := core.NewSupervisor(s, 10, true)
+
+		applyCalls := 0
+		revertCalls := 0
+		sup.SetDNSHooks(
+			func(remoteDNS string) error {
+				applyCalls++
+				return nil
+			},
+			func() error {
+				revertCalls++
+				return nil
+			},
+		)
+
+		cfg := &store.ConfigItem{
+			ID:       "cfg-dns-2",
+			Name:     "DNS Disabled Server",
+			Protocol: "vless",
+			Server:   "1.1.1.1",
+			Port:     443,
+			RawURL:   "vless://uuid@1.1.1.1:443?security=none",
+		}
+
+		if err := sup.StartTunnel(cfg); err != nil {
+			t.Fatalf("failed to start tunnel: %v", err)
+		}
+
+		if applyCalls != 0 {
+			t.Fatalf("expected applyDNS NOT to be called when DNSOverTunnel is false, got %d calls", applyCalls)
+		}
+
+		if err := sup.StopTunnel(); err != nil {
+			t.Fatalf("failed to stop tunnel: %v", err)
+		}
+	})
+}
+
+
