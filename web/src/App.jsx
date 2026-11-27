@@ -135,6 +135,16 @@ export default function App() {
       } else {
         const newStat = await api.connectTunnel();
         setStatus(newStat);
+        if (newStat?.state === 'connecting') {
+          for (let i = 0; i < 40; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            const polled = await api.getTunnelStatus();
+            setStatus(polled);
+            if (polled?.state === 'connected' || polled?.state === 'disconnected') {
+              break;
+            }
+          }
+        }
       }
     } catch (err) {
       alert(err.message || 'Tunnel operation failed');

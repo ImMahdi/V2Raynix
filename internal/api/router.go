@@ -396,12 +396,18 @@ func (r *Router) handleTunnelConnect(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := r.deps.Supervisor.StartTunnel(active); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	status := r.deps.Supervisor.GetStatus()
+	if status.State == "connected" {
+		writeJSON(w, http.StatusOK, status)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, r.deps.Supervisor.GetStatus())
+	go func(cfg *store.ConfigItem) {
+		_ = r.deps.Supervisor.StartTunnel(cfg)
+	}(active)
+
+	status.State = "connecting"
+	writeJSON(w, http.StatusOK, status)
 }
 
 func (r *Router) handleTunnelDisconnect(w http.ResponseWriter, req *http.Request) {
